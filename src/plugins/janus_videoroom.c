@@ -12721,7 +12721,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					rtp.extensions.min_delay = stream->min_delay;
 					rtp.extensions.max_delay = stream->max_delay;
 				}
-				JANUS_LOG(LOG_INFO, "       [VIDEOROOM] Relaying RTP packet %"SCNu16" as %"SCNu16" outbound via gateway\n", packet->seq_number, packet->data->seq_number);
+				JANUS_LOG(LOG_VERB, "[VIDEOROOM] Relaying RTP packet %"SCNu16" as %"SCNu16" outbound via gateway\n", packet->seq_number, packet->data->seq_number);
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
