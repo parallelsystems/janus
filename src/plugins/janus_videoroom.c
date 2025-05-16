@@ -8346,6 +8346,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				janus_mutex_unlock(&ps->rid_mutex);
 			}
 		}
+
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		janus_mutex_lock(&ps->rtp_forwarders_mutex);
 		if(participant->srtp_contexts && g_hash_table_size(participant->srtp_contexts) > 0) {
@@ -8357,6 +8358,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				srtp_ctx->slen = 0;
 			}
 		}
+
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, ps->rtp_forwarders);
@@ -8489,6 +8491,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 			packet.extensions.min_delay = ps->min_delay;
 			packet.extensions.max_delay = ps->max_delay;
 		}
+
 		/* Go: some viewers may decide to drop the packet, but that's up to them */
 		janus_mutex_lock_nodebug(&ps->subscribers_mutex);
 		g_slist_foreach(ps->subscribers, janus_videoroom_relay_rtp_packet, &packet);
@@ -12709,6 +12712,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		} else {
 			/* Fix sequence number and timestamp (publisher switching may be involved) */
 			janus_rtp_header_update(packet->data, &stream->context, TRUE, 0);
+
 			/* Send the packet */
 			if(gateway != NULL) {
 				janus_plugin_rtp rtp = { .mindex = stream->mindex, .video = packet->is_video, .buffer = (char *)packet->data, .length = packet->length,
@@ -12717,6 +12721,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					rtp.extensions.min_delay = stream->min_delay;
 					rtp.extensions.max_delay = stream->max_delay;
 				}
+				JANUS_LOG(LOG_INFO, "       [VIDEOROOM] Relaying RTP packet %"SCNu16" as %"SCNu16" outbound via gateway\n", packet->seq_number, packet->data->seq_number);
 				gateway->relay_rtp(session->handle, &rtp);
 			}
 			/* Restore the timestamp and sequence number to what the publisher set them to */
