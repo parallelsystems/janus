@@ -66,7 +66,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	janus_rtcp_remove_nacks((char *)copy_data[idx++], size);
 	/* Functions that allocate new memory */
 	char *output_data = janus_rtcp_filter((char *)data, size, &newlen);
-	GSList *list = janus_rtcp_get_nacks((char *)data, size);
+	GSList *list = janus_rtcp_get_nacks((char *)data, size, 0);
 
 	/* Free resources */
 	g_free(output_data);

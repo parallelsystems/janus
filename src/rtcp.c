@@ -1177,7 +1177,7 @@ gboolean janus_rtcp_has_pli(char *packet, int len) {
 	return FALSE;
 }
 
-GSList *janus_rtcp_get_nacks(char *packet, int len) {
+GSList *janus_rtcp_get_nacks(char *packet, int len, guint64 handle_id_opt) {
 	if(packet == NULL || len == 0)
 		return NULL;
 	janus_rtcp_header *rtcp = (janus_rtcp_header *)packet;
@@ -1205,7 +1205,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
 				if(nacks > 0) {
-					JANUS_LOG(LOG_DBG, "        Got %d nacks\n", nacks);
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] RTCP packet: got %d nacks\n", handle_id_opt,  nacks);
 					janus_rtcp_nack *nack = NULL;
 					uint16_t pid = 0;
 					uint16_t blp = 0;
@@ -1223,7 +1223,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 								list = g_slist_append(list, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
-						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
+						JANUS_LOG(LOG_NACK, "         NACK %d - Packet %"SCNu16" / %s", i, pid, bitmask);
 					}
 				}
 				break;
@@ -1538,13 +1538,12 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	guint16 pid = GPOINTER_TO_UINT(nacks->data);
 	nack->pid = htons(pid);
 
-	JANUS_LOG(LOG_INFO, "[NACKing] NACK root seqnum %"SCNu16"... [", pid);
+	JANUS_LOG(LOG_INFO, "   Sending Publisher NACK RTCP msg with root seqnum %"SCNu16"\n", pid);
 
 	nacks = nacks->next;
 	int words = 3;
 	while(nacks) {
 		guint16 npid = GPOINTER_TO_UINT(nacks->data);
-		JANUS_LOG(LOG_INFO, "%"SCNu16"", npid);
 
 		if(npid-pid < 1) {
 			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
@@ -1569,8 +1568,6 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 		nacks = nacks->next;
 	}
 	rtcp->length = htons(words);
-
-	JANUS_LOG(LOG_INFO, "] - DONE\n");
 
 	return words*4+4;
 }

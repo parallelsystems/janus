@@ -454,11 +454,12 @@ typedef struct janus_ice_nacked_packet {
 	guint16 seq_number;
 	guint source_id;
 } janus_ice_nacked_packet;
+// This callback is for downstream (janus -> subscriber) NACKs
 static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 	janus_ice_nacked_packet *pkt = (janus_ice_nacked_packet *)user_data;
 
 	if(pkt->medium && pkt->medium->pc && pkt->medium->pc->handle) {
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+		JANUS_LOG(LOG_NACK, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 			pkt->medium->pc->handle->handle_id, pkt->seq_number, pkt->medium->ssrc_peer[pkt->vindex], pkt->vindex);
 		g_hash_table_remove(pkt->medium->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
 		g_hash_table_remove(pkt->medium->pending_nacked_cleanup, GUINT_TO_POINTER(pkt->source_id));
@@ -632,9 +633,9 @@ static void janus_ice_free_queued_packet(janus_ice_queued_packet *pkt) {
 	g_free(pkt);
 }
 
-/* Minimum and maximum value, in milliseconds, for the NACK queue/retransmissions (default=200ms/1000ms) */
+/* Minimum and maximum value, in milliseconds, for the downstream NACK queue/retransmissions (default=200ms/2000ms) */
 #define DEFAULT_MIN_NACK_QUEUE	200
-#define DEFAULT_MAX_NACK_QUEUE	1000
+#define DEFAULT_MAX_NACK_QUEUE	2000
 /* Maximum ignore count after retransmission (200ms) */
 #define MAX_NACK_IGNORE			200000
 
@@ -669,6 +670,8 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_peerconnection *pc, 
 		if((medium->type == JANUS_MEDIA_AUDIO && !audio) || (medium->type == JANUS_MEDIA_VIDEO && !video))
 			continue;
 		if(medium->retransmit_buffer) {
+			JANUS_LOG(LOG_NACK, "Outbound NACK queue is %lu long, queue time %lu msec...\n", g_queue_get_length(medium->retransmit_buffer), (gint64)medium->nack_queue_ms);
+
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(medium->retransmit_buffer);
 			while(p && (!now || (now - p->created >= (gint64)medium->nack_queue_ms*1000))) {
 				/* Packet is too old, get rid of it */
@@ -676,11 +679,15 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_peerconnection *pc, 
 				/* Remove from hashtable too */
 				janus_rtp_header *header = (janus_rtp_header *)p->data;
 				guint16 seq = ntohs(header->seq_number);
+				guint32 ssrc = ntohl(header->ssrc);
+				JANUS_LOG(LOG_NACK, "  rm seqnum %"SCNu16" (ssrc %"SCNu32") from NACK queue\n", seq, ssrc);
 				g_hash_table_remove(medium->retransmit_seqs, GUINT_TO_POINTER(seq));
 				/* Free the packet */
 				janus_ice_free_rtp_packet(p);
 				p = (janus_rtp_packet *)g_queue_peek_head(medium->retransmit_buffer);
 			}
+
+			JANUS_LOG(LOG_NACK, "    now %lu long\n", g_queue_get_length(medium->retransmit_buffer));
 		}
 	}
 }
@@ -2478,7 +2485,9 @@ candidatedone:
 	return;
 }
 
-// @viotovmp - this is a callback from the libnice context, whenever there is data. the data is typically one RT(C)P packet.
+// This is a callback from the libnice context, whenever there is data. the data is typically one RT(C)P packet.
+// Critically, called from both the publisher and receiver sides! Logging with the handle_id is very important to discern...
+// On the receiver side, we mainly only get RTCP packets, since it's not sending RTP video...
 static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
 	janus_ice_peerconnection *pc = (janus_ice_peerconnection *)ice;
 	if(!pc) {
@@ -2526,7 +2535,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			guint32 packet_ssrc = ntohl(header->ssrc);
 			/* Which medium does this refer to? Is this audio or video? */
 			int video = 0, vindex = 0, rtx = 0;
-			int nack_count = 0; // @viotovmp
 			janus_ice_peerconnection_medium *medium = g_hash_table_lookup(pc->media_byssrc, GINT_TO_POINTER(packet_ssrc));
 			if(medium == NULL) {
 				/* SSRC not found, try the mid/rid RTP extensions if in use */
@@ -2666,14 +2674,20 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, buflen, &plen);
 				if (!payload) {
-					  JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
+					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
 				}
+
+				guint16 in_seqnum = ntohs(header->seq_number);
+				JANUS_LOG(LOG_NACK, "[%"SCNu64"] [RECEIVER] Packet %"SCNu16" arrived\n", handle->handle_id, in_seqnum);
+
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
 					/* Rewrite the header with the info from the original packet (payload type, SSRC, sequence number) */
 					header->type = medium->payload_type;
 					packet_ssrc = medium->ssrc_peer[vindex];
 					header->ssrc = htonl(packet_ssrc);
+					
+					guint16 osn_seqnum = 0;
 					if(plen > 0) {
 						memcpy(&header->seq_number, payload, 2);
 						/* Finally, remove the original sequence number from the payload: move the whole
@@ -2686,7 +2700,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							/* Replace the 'repaired' extension ID as well with the 'regular' one */
 							janus_rtp_header_extension_replace_id(buf, buflen, pc->ridrtx_ext_id, pc->rid_ext_id);
 						}
+						osn_seqnum = ntohs(header->seq_number);
 					}
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Mapped NSN %"SCNu16" to OSN %"SCNu16" (SSRC %"SCNu32")...\n",
+						handle->handle_id, in_seqnum, osn_seqnum, header->ssrc);
 				}
 
 				/* Check if we need to handle transport wide cc */
@@ -2721,40 +2738,34 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(medium->do_nacks) {
 					/* Check if this packet is a duplicate: can happen with RFC4588 */
 					guint16 seqno = ntohs(header->seq_number);
-					int nstate = medium->rtx_nacked[vindex] ?
-						GPOINTER_TO_INT(g_hash_table_lookup(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno))) : 0;
-						
-					if(nstate == 1) {
-						/* Packet was NACKed and this is the first time we receive it: change state to received */
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] +++ Received NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
-							handle->handle_id, seqno, packet_ssrc, vindex);
-						nack_count = 1;
-						g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno), GUINT_TO_POINTER(2)); // Store the `nstate` as 2 (Received)
-
-					} else if(nstate == 2) {
-						/* We already received this packet: drop it */
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] ~~~ Detected duplicate packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n", handle->handle_id, seqno, packet_ssrc, vindex);
-						nack_count = 2;
-						if(!strcasecmp(medium->codec, "h264") && video) {
-							if(janus_h264_is_i_frame(payload, plen)) {
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] ~~~        Duplicate packet %"SCNu16" was a keyframe!\n", handle->handle_id, seqno);
-							} else {
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] ~~~        Duplicate packet %"SCNu16" wasn't a keyframe :-(\n", handle->handle_id, seqno);
-							}
-						}
-						return;
-					} else if(rtx && nstate == 0) {
+					int nack_state = medium->rtx_nacked[vindex] ?
+						GPOINTER_TO_INT(g_hash_table_lookup(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno))) :
+						SEQ_MISSING;
+					
+					// Nacks up to 6 times
+					if ( nack_state >= SEQ_NACKED && nack_state <= SEQ_GIVEUP ) {
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] +++ Received NACKed packet %"SCNu16" (NACK'd %"SCNu32" time(s)) (SSRC %"SCNu32")\n",
+							handle->handle_id, seqno, nack_state, packet_ssrc);
+						g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno), GUINT_TO_POINTER(SEQ_RECVED)); // Store it as received!
+					} else if ( rtx && nack_state == SEQ_MISSING ) {
 						/* We received a retransmission for a packet we didn't NACK: drop it
 						 * FIXME This seems to happen with Chrome when RFC4588 is enabled: in that case,
 						 * Chrome sends the first packet ~8 times as a retransmission, probably to ensure
 						 * we receive it, since the first packet cannot be NACKed (NACKs are triggered
 						 * when there's a gap in between two packets, and the first doesn't have a reference)
 						 * Rather than dropping, we should add a better check in the future */
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] !!! Got a retransmission for non-NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] ! Got a retransmission for non-NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 							handle->handle_id, seqno, packet_ssrc, vindex);
+						return;
+					} else if ( nack_state == SEQ_RECVED ) {
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] !!! Received duplicate NACK'd packet %"SCNu16" (SSRC %"SCNu32")...\n",
+							handle->handle_id, seqno, packet_ssrc);
+						// Don't pass it down if we've already received it
 						return;
 					}
 				}
+
+				// At this point, the packet passed into the router is guaranteed to be "new"!
 
 				/* Backup the RTP header before passing it to the proper RTP switching context */
 				janus_rtp_header backup = *header;
@@ -2840,12 +2851,17 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 
-				/* Pass the packet to the plugin */
+				/* Pass the packet to the plugin for downstream routing */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp && handle->app_handle &&
 						!g_atomic_int_get(&handle->app_handle->stopped) &&
 						!g_atomic_int_get(&handle->destroyed))
+				{
+					uint16_t rtp_pkt_seqnum = ((janus_rtp_header*)rtp.buffer)->seq_number;
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Sending RTP packet %"SCNu16" as %"SCNu16" to (VIDEOROOM) plugin\n", handle->handle_id, ntohs(backup.seq_number), ntohs(rtp_pkt_seqnum));
 					plugin->incoming_rtp(handle->app_handle, &rtp);
+				}
+
 				/* Restore the header for the stats (plugins may have messed with it) */
 				*header = backup;
 
@@ -2892,20 +2908,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				/* If this is video, check if this is a keyframe: if so, we empty our NACK queue */
 				if(video && medium->video_is_keyframe) {
 					if(medium->video_is_keyframe(payload, plen)) {
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] === Keyframe in packet %"SCNu16" (NACK'd %d times)\n", handle->handle_id, new_seqn, nack_count);
 						// Store this seqnum as the keyframe
 						// NOTE: we increase the index by 1, because a value of 0 is considered "no keyframe has been detected"
 						medium->last_kf_seqs[vindex] = new_seqn + 1;
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] (SSRC %"SCNu32") Inbound packet %"SCNu16" was a keyframe! (resetting NACK queue)\n", handle->handle_id, packet_ssrc, new_seqn);
 
 						if(rtcp_ctx && (int16_t)(new_seqn - rtcp_ctx->max_seq_nr) > 0) {
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] Keyframe received with a highest sequence number, resetting NACK queue\n", handle->handle_id);
 							janus_seq_list_free(&medium->last_seqs[vindex]);
 						}
 					} else {
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] === Packet %"SCNu16" is NOT keyframe (NACK'd %d times) (Last %"SCNu16")\n",
-							handle->handle_id, new_seqn, nack_count,
-							medium->last_kf_seqs[vindex] ? medium->last_kf_seqs[vindex] - 1 : 0)
-						;
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] (SSRC %"SCNu32") Inbound packet %"SCNu16" wasn't a keyframe\n", handle->handle_id, packet_ssrc, new_seqn);
 					}
 				}
 
@@ -2921,6 +2933,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* First seq, set up to add one seq */
 					cur_seqn = new_seqn - (guint16)1; /* Can wrap */
 				}
+				
 				if(!janus_seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN) &&
 						!janus_seq_in_range(cur_seqn, new_seqn, 1000)) {
 					/* Jump too big, start fresh */
@@ -2931,6 +2944,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					cur_seqn = new_seqn - (guint16)1;
 				}
 
+				// Start handling which packets we need to NACK to the publisher
 				GSList *nacks = NULL;
 				gint64 now = janus_get_monotonic_time();
 
@@ -2951,96 +2965,60 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Scan old seq objs backwards */
 					while(cur_seq != NULL) {
 						last_seqs_len++;
+
+						gint64 nack_time_msec = (now - cur_seq->ts)/1000;
+						guint16 nack_count = cur_seq->state;
+
 						if(cur_seq->seq == new_seqn) {
 							// If we find the seqnum in the gap, as we iterate backwards...
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] +++ Received sequence number %"SCNu16" (%s stream #%d)\n",
-								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
+							JANUS_LOG(LOG_NACK, "[%"SCNu64"] +++ Received sequence number %"SCNu16" - NACK'd %d times (%d msec since first NACK)\n",
+								handle->handle_id, cur_seq->seq, nack_count, nack_time_msec);
 							cur_seq->state = SEQ_RECVED;
-						} else if(cur_seq->state == SEQ_MISSING && 
-							(
-								medium->last_kf_seqs[vindex] > 0 && // keyframe is tracked
-								(((medium->last_kf_seqs[vindex] - 1) + MIN_EXPECTED_KEYFRAME_INTERVAL <= cur_seq->seq) &&
-								((medium->last_kf_seqs[vindex] - 1) + MAX_EXPECTED_KEYFRAME_INTERVAL >= cur_seq->seq)) // current missed sequence is in the range
-							)
-							) {
-							// Immediately send a NACK for this potential keyframe
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] --- Missed sequence number %"SCNu16" (%s stream #%d) MAY BE a keyframe (Last one was %"SCNu16"), sending 1st NACK NOW\n",
-								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex, medium->last_kf_seqs[vindex] - 1);
+						}
+						// Send 2 NACKs 10msec apart (0, 10), and the following NACKS at 90, 120, 150 msec
+						else if (
+							(cur_seq->state >= SEQ_MISSING && cur_seq->state < SEQ_GIVEUP) && 
+							(cur_seq->ts == now /* new detection */ ||
+								(now - cur_seq->ts >= (nack_count < 2 ? nack_count*10000 : (nack_count+1)*30000)
+							))
+						) {
+							cur_seq->state += SEQ_NACKED; // Uses enum as a counter
+							JANUS_LOG(LOG_NACK, "[%"SCNu64"] --- Missed sequence number %"SCNu16", sending NACK %d (%d msec since first NACK)\n",
+								handle->handle_id, cur_seq->seq, cur_seq->state, nack_time_msec);
 
 							// Add this to the NACK list
 							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
-							cur_seq->state = SEQ_EARLYKF_NACKED;
 
 							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
-								/* Keep track of this sequence number, we need to avoid duplicates */
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] *** Tracking NACKed packet %"SCNu16" (potential keyframe) (SSRC %"SCNu32", vindex %d)...\n",
-									handle->handle_id, cur_seq->seq, packet_ssrc, vindex);
-
+								// Build the RTX hashtable on first NACK
 								if(medium->rtx_nacked[vindex] == NULL)
 									medium->rtx_nacked[vindex] = g_hash_table_new(NULL, NULL);
-								g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq), GINT_TO_POINTER(0)); // @viotov - DON'T set it as NACK'd (1)
 
-								/* We don't track it forever, though: add a timed source to remove it in a few seconds */
-								janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
-								np->medium = medium;
-								np->seq_number = cur_seq->seq;
-								np->vindex = vindex;
-								if(medium->pending_nacked_cleanup == NULL)
-									medium->pending_nacked_cleanup = g_hash_table_new(NULL, NULL);
+								gpointer entry = g_hash_table_lookup(medium->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq));
+								if (!entry)
+								{
+									JANUS_LOG(LOG_NACK, "      Adding a 5 second RTX expiry to packet %"SCNu16"\n", cur_seq->seq);
 
-								GSource *timeout_source = g_timeout_source_new_seconds(5);
-								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
-								np->source_id = g_source_attach(timeout_source, handle->mainctx);
-								g_source_unref(timeout_source);
-								g_hash_table_insert(medium->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
+									/* We don't track it forever, though: add a timed source to remove it in a few seconds */
+									janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
+									np->medium = medium;
+									np->seq_number = cur_seq->seq;
+									np->vindex = vindex;
+
+									// Build the cleanup hashtable on first NACK
+									if(medium->pending_nacked_cleanup == NULL)
+										medium->pending_nacked_cleanup = g_hash_table_new(NULL, NULL);
+									GSource *timeout_source = g_timeout_source_new_seconds(5);
+									g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
+
+									np->source_id = g_source_attach(timeout_source, handle->mainctx);
+									g_source_unref(timeout_source);
+									g_hash_table_insert(medium->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
+								}
+
+								g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq), GINT_TO_POINTER(cur_seq->state));
 							}
-
-						} else if(
-							(cur_seq->state == SEQ_MISSING || cur_seq->state == SEQ_EARLYKF_NACKED) && 
-							(now - cur_seq->ts > SEQ_MISSING_WAIT)
-						) {
-							if (cur_seq->state == SEQ_MISSING) {
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] --- Missed sequence number %"SCNu16" (%s stream #%d), sending 1st NACK\n",
-									handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							} else {
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] --- Missed sequence number %"SCNu16" (%s stream #%d) MAY BE a keyframe, sending 2nd NACK\n",
-									handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-							}
-
-							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
-							cur_seq->state = SEQ_NACKED;
-							// cur_seq->state = SEQ_GIVEUP; // @viotovmp - uncomment this if we don't want to send another NACK after this!
-
-							if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
-								/* Keep track of this sequence number, we need to avoid duplicates */
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] *** Tracking NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
-									handle->handle_id, cur_seq->seq, packet_ssrc, vindex);
-
-								if(medium->rtx_nacked[vindex] == NULL)
-									medium->rtx_nacked[vindex] = g_hash_table_new(NULL, NULL);
-								g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq), GINT_TO_POINTER(1));
-
-								/* We don't track it forever, though: add a timed source to remove it in a few seconds */
-								janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
-								np->medium = medium;
-								np->seq_number = cur_seq->seq;
-								np->vindex = vindex;
-								if(medium->pending_nacked_cleanup == NULL)
-									medium->pending_nacked_cleanup = g_hash_table_new(NULL, NULL);
-								GSource *timeout_source = g_timeout_source_new_seconds(5);
-								g_source_set_callback(timeout_source, janus_ice_nacked_packet_cleanup, np, (GDestroyNotify)g_free);
-								np->source_id = g_source_attach(timeout_source, handle->mainctx);
-								g_source_unref(timeout_source);
-								g_hash_table_insert(medium->pending_nacked_cleanup, GUINT_TO_POINTER(np->source_id), timeout_source);
-							}
-						
-						} else if(cur_seq->state == SEQ_NACKED  && now - cur_seq->ts > SEQ_NACKED_WAIT) {
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] --- Missed sequence number %"SCNu16" (%s stream #%d), sending 2nd NACK\n",
-								handle->handle_id, cur_seq->seq, video ? "video" : "audio", vindex);
-
-							nacks = g_slist_prepend(nacks, GUINT_TO_POINTER(cur_seq->seq));
-							cur_seq->state = SEQ_GIVEUP;
-						}
+						} 
 
 						if(cur_seq == *last_seqs) {
 							/* Just processed head */
@@ -3059,7 +3037,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				guint nacks_count = g_slist_length(nacks);
 				if(nacks_count) {
 					/* Generate a NACK and send it */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] !!! Now sending NACK for %u missed packets (%s stream #%d)\n",
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Now sending NACK for %u missed packets (%s stream #%d)\n",
 						handle->handle_id, nacks_count, video ? "video" : "audio", vindex);
 
 					char nackbuf[120];
@@ -3106,12 +3084,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, TRUE, buf, buflen,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
+
 				/* Check if there's an RTCP BYE: in case, let's log it */
 				if(janus_rtcp_has_bye(buf, buflen)) {
 					/* Note: we used to use this as a trigger to close the PeerConnection, but not anymore
 					 * Discussion here, https://groups.google.com/forum/#!topic/meetecho-janus/4XtfbYB7Jvc */
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %u (component %u)\n", handle->handle_id, stream_id, component_id);
 				}
+
 				/* Is this audio or video? */
 				int video = 0, vindex = 0;
 				/* Bundled streams, should we check the SSRCs? */
@@ -3131,10 +3111,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						return;
 					}
 				}
+
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RFC4588_RTX)) {
 					janus_rtcp_swap_report_blocks(buf, buflen, medium->ssrc_rtx);
 				}
 				video = (medium->type == JANUS_MEDIA_VIDEO);
+
 				/* If this is video, check if this is simulcast */
 				if(video) {
 					if(medium->ssrc_peer[1] == rtcp_ssrc) {
@@ -3151,6 +3133,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* Drop the packet if the parsing function returns with an error */
 					return;
 				}
+
 				if(rtcp_ctx && rtcp_ctx->rtt != rtt) {
 					/* Check the current RTT, to see if we need to update the size of the queue: we take
 					 * the RTT (should we include all media?) and add 100ms just to be conservative */
@@ -3160,6 +3143,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						nack_queue_ms = DEFAULT_MAX_NACK_QUEUE;
 					else if(nack_queue_ms < min_nack_queue)
 						nack_queue_ms = min_nack_queue;
+
 					uint16_t mavg = rtt ? ((7*medium->nack_queue_ms + nack_queue_ms)/8) : nack_queue_ms;
 					if(mavg > DEFAULT_MAX_NACK_QUEUE)
 						mavg = DEFAULT_MAX_NACK_QUEUE;
@@ -3175,32 +3159,33 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
-				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
+				GSList *nacks = janus_rtcp_get_nacks(buf, buflen, handle->handle_id);
 				guint nacks_count = g_slist_length(nacks);
 				if(nacks_count && medium->do_nacks) {
 					/* Handle NACK */
-					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GHashTable *retransmit_seqs = medium->retransmit_seqs;
 					GSList *list = (retransmit_seqs != NULL ? nacks : NULL);
 					int retransmits_cnt = 0;
 					janus_mutex_lock(&medium->mutex);
+
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
-						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
 						/* Check if we have the packet */
 						janus_rtp_packet *p = g_hash_table_lookup(retransmit_seqs, GUINT_TO_POINTER(seqnr));
 						if(p == NULL) {
-							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
+							JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
 						} else {
 							/* Should we retransmit this packet? */
 							if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
-								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
+								JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
 								list = list->next;
 								continue;
 							}
 							in_rb = 1;
-							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
+							JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
 							p->last_retransmit = now;
 							retransmits_cnt++;
 							/* Enqueue it */
@@ -3254,9 +3239,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					g_slist_free(nacks);
 					nacks = NULL;
 				}
+
 				if(medium->retransmit_recent_cnt &&
 						now - medium->retransmit_log_ts > 5*G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Retransmitted %u packets due to NACK (%s stream #%d)\n",
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Retransmitted %u packets due to NACK (%s stream #%d)\n",
 						handle->handle_id, medium->retransmit_recent_cnt, video ? "video" : "audio", vindex);
 					medium->retransmit_recent_cnt = 0;
 					medium->retransmit_log_ts = now;
@@ -4479,10 +4465,12 @@ static gboolean janus_ice_outgoing_stats_handle(gpointer user_data) {
 	return G_SOURCE_CONTINUE;
 }
 
+// This is where packets are sent downstream, called once on each event loop cycle.
 static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janus_ice_queued_packet *pkt) {
 	janus_session *session = (janus_session *)handle->session;
 	janus_ice_peerconnection *pc = handle->pc;
 	janus_ice_peerconnection_medium *medium = NULL;
+
 	if(pkt == &janus_ice_start_gathering) {
 		/* Start gathering candidates */
 		if(handle->agent == NULL) {
@@ -4629,6 +4617,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			plugin->data_ready(handle->app_handle);
 		}
 	}
+
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
@@ -4646,6 +4635,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
+
 	if(!pc->cdone) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !pc->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No candidates not gathered yet for stream??\n", handle->handle_id);
@@ -4654,6 +4644,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
+
 	/* Find the right medium instance */
 	if(pkt->mindex != -1) {
 		medium = g_hash_table_lookup(pc->media, GINT_TO_POINTER(pkt->mindex));
@@ -4666,6 +4657,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 		janus_ice_free_queued_packet(pkt);
 		return G_SOURCE_CONTINUE;
 	}
+
 	if(pkt->control) {
 		/* RTCP */
 		int video = (pkt->type == JANUS_ICE_PACKET_VIDEO);
@@ -4747,6 +4739,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
+
 			if(janus_is_webrtc_encryption_enabled() && (!pc->dtls || !pc->dtls->srtp_valid || !pc->dtls->srtp_out)) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !medium->noerrorlog) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s stream component has no valid SRTP session (yet?)\n",
@@ -4756,11 +4749,12 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				janus_ice_free_queued_packet(pkt);
 				return G_SOURCE_CONTINUE;
 			}
+
 			medium->noerrorlog = FALSE;
 			if(pkt->encrypted) {
 				/* Already RTP (probably a retransmission?) */
 				janus_rtp_header *header = (janus_rtp_header *)pkt->data;
-				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
+				JANUS_LOG(LOG_NACK, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
 				int sent = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, pkt->length, (const gchar *)pkt->data);
 				if(sent < pkt->length) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, pkt->length);
@@ -4807,16 +4801,18 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 				if(g_atomic_int_get(&handle->dump_packets))
 					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, FALSE, pkt->data, pkt->length,
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
+
 				/* If this is video and NACK optimizations are enabled, check if this is
 				 * a keyframe: if so, we empty our retransmit buffer for incoming NACKs */
 				if(video && nack_optimizations && medium->video_is_keyframe) {
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
 					if(medium->video_is_keyframe(payload, plen)) {
-						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Keyframe sent, cleaning retransmit buffer\n", handle->handle_id);
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] OUTBOUND keyframe sent, cleaning NACK queue\n", handle->handle_id);
 						janus_cleanup_nack_buffer(0, pc, FALSE, TRUE);
 					}
 				}
+
 				/* Before encrypting, check if we need to copy the unencrypted payload (e.g., for rtx/90000) */
 				janus_rtp_packet *p = NULL;
 				if(medium->nack_queue_ms > 0 && !pkt->retransmission && pkt->type == JANUS_ICE_PACKET_VIDEO && medium->do_nacks &&
@@ -4828,6 +4824,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					guint16 original_seq = header->seq_number;
 					p->data = g_malloc(pkt->length+2);
 					p->length = pkt->length+2;
+
 					/* Check where the payload starts */
 					int plen = 0;
 					char *payload = janus_rtp_payload(pkt->data, pkt->length, &plen);
@@ -4846,11 +4843,18 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					p->extensions = pkt->extensions;
 					/* Copy the payload */
 					memcpy(p->data+hsize+2, payload, pkt->length - hsize);
+
+					janus_rtp_header *p_header = (janus_rtp_header *)p->data;
+					guint16 seq = ntohs(p_header->seq_number);
+
+					JANUS_LOG(LOG_NACK, "[%"SCNu64"] OUTBOUND seq num mapping: %"SCNu16" -> %"SCNu16"\n", handle->handle_id, original_seq, seq);
 				}
+
 				/* Encrypt SRTP */
 				int protected = pkt->length;
 				int res = janus_is_webrtc_encryption_enabled() ?
 					srtp_protect(pc->dtls->srtp_out, pkt->data, &protected) : srtp_err_status_ok;
+
 				if(res != srtp_err_status_ok) {
 					/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
 					handle->srtp_errors_count++;
@@ -4868,6 +4872,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
 					}
+
 					/* Update stats */
 					if(sent > 0) {
 						/* Update the RTCP context as well */
@@ -4910,6 +4915,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 							}
 						}
 					}
+
 					if(medium->nack_queue_ms > 0 && !pkt->retransmission) {
 						/* Save the packet for retransmissions that may be needed later */
 						if(!medium->do_nacks) {
@@ -4929,11 +4935,13 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 						p->last_retransmit = 0;
 						janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 						guint16 seq = ntohs(header->seq_number);
+						guint32 packet_ssrc = ntohl(header->ssrc);
 						if(medium->retransmit_buffer == NULL) {
 							medium->retransmit_buffer = g_queue_new();
 							medium->retransmit_seqs = g_hash_table_new(NULL, NULL);
 						}
 						g_queue_push_tail(medium->retransmit_buffer, p);
+						JANUS_LOG(LOG_NACK, "[%"SCNu64"] Storing outbound packet (SSRC %"SCNu32") seq %"SCNu16"\n", handle->handle_id, packet_ssrc, seq);
 						/* Insert in the table too, for quick lookup */
 						g_hash_table_insert(medium->retransmit_seqs, GUINT_TO_POINTER(seq), p);
 					} else {

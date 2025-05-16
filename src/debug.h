@@ -45,12 +45,14 @@ extern char *janus_log_global_prefix;
 #define LOG_WARN     (3)
 /*! \brief Informational message */
 #define LOG_INFO     (4)
+/*! \brief NACK/Packet seqnum message */
+#define LOG_NACK     (5)
 /*! \brief Verbose message */
-#define LOG_VERB     (5)
+#define LOG_VERB     (6)
 /*! \brief Overly verbose message */
-#define LOG_HUGE     (6)
+#define LOG_HUGE     (7)
 /*! \brief Debug message (includes .c filename, function and line number) */
-#define LOG_DBG      (7)
+#define LOG_DBG      (8)
 /*! \brief Maximum level of debugging */
 #define LOG_MAX LOG_DBG
 
@@ -67,6 +69,7 @@ static const char *janus_log_prefix[] = {
 	"",
 	"",
 	"",
+	"",
 /* with colors */
 	"",
 	ANSI_COLOR_MAGENTA "[FATAL]" ANSI_COLOR_RESET " ",
@@ -75,7 +78,7 @@ static const char *janus_log_prefix[] = {
 	"",
 	"",
 	"",
-	""
+	"",
 };
 ///@}
 #pragma GCC diagnostic pop

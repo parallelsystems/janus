@@ -451,8 +451,9 @@ gboolean janus_rtcp_has_pli(char *packet, int len);
 /*! \brief Method to parse an RTCP NACK message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
+ * @param[in] opt_handle_id Optional handle ID for logging
  * @returns A list of janus_nack elements containing the sequence numbers to send again */
-GSList *janus_rtcp_get_nacks(char *packet, int len);
+GSList *janus_rtcp_get_nacks(char *packet, int len, guint64 opt_handle_id);
 
 /*! \brief Method to remove an RTCP NACK message
  * @param[in] packet The message data

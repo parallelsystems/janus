@@ -327,13 +327,9 @@ void janus_seq_list_free(janus_seq_info **head);
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
-	SEQ_GIVEUP,
+	SEQ_GIVEUP = 6, // Do up to 6 NACKs
 	SEQ_RECVED,
-	SEQ_EARLYKF_NACKED,
 };
-
-#define MIN_EXPECTED_KEYFRAME_INTERVAL 170
-#define MAX_EXPECTED_KEYFRAME_INTERVAL 240
 
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
