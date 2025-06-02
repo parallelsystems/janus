@@ -530,6 +530,13 @@ duktape_DATA += \
 EXTRA_DIST += ../conf/janus.plugin.duktape.jcfg.sample.in
 endif
 
+if ENABLE_PLUGIN_TELEM
+plugin_LTLIBRARIES += plugins/libjanus_telem.la
+plugins_libjanus_telem_la_SOURCES = plugins/janus_telem.c
+plugins_libjanus_telem_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_telem_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_telem_la_LIBADD = $(plugins_libadd)
+endif
 
 ##
 # Post-processing

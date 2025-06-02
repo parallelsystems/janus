@@ -717,7 +717,7 @@ const char *janus_sip_get_package(void);
 void janus_sip_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_sip_setup_media(janus_plugin_session *handle);
-void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore);
 void janus_sip_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_sip_hangup_media(janus_plugin_session *handle);
 void janus_sip_destroy_session(janus_plugin_session *handle, int *error);
@@ -2401,7 +2401,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
-void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+void janus_sip_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {

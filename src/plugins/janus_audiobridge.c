@@ -1082,7 +1082,7 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_audiobridge_handle_admin_message(json_t *message);
 void janus_audiobridge_setup_media(janus_plugin_session *handle);
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore);
 void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
@@ -5597,7 +5597,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	janus_mutex_unlock(&rooms_mutex);
 }
 
-void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
@@ -8868,7 +8868,7 @@ static void *janus_audiobridge_plainrtp_relay_thread(void *data) {
 				janus_rtp_header_update(header, &participant->plainrtp_media.context, FALSE, 0);
 				/* Handle as a WebRTC RTP packet */
 				packet.length = bytes;
-				janus_audiobridge_incoming_rtp(session->handle, &packet);
+				janus_audiobridge_incoming_rtp(session->handle, &packet, NULL);
 				continue;
 			}
 		}

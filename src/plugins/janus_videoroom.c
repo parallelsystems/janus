@@ -1545,7 +1545,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_videoroom_handle_admin_message(json_t *message);
 void janus_videoroom_setup_media(janus_plugin_session *handle);
-void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_videoroom_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_videoroom_data_ready(janus_plugin_session *handle);
@@ -8229,7 +8229,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 }
 
 static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_rtp *pkt);
-void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pkt) {
+void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pkt, void *ignore) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;

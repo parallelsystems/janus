@@ -945,7 +945,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_streaming_handle_admin_message(json_t *message);
 void janus_streaming_setup_media(janus_plugin_session *handle);
-void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore);
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_streaming_data_ready(janus_plugin_session *handle);
 void janus_streaming_hangup_media(janus_plugin_session *handle);
@@ -5563,7 +5563,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME We don't care about what the browser sends us, we're sendonly */

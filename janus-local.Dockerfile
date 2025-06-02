@@ -39,23 +39,18 @@ RUN apk add --no-cache \
     libwebsockets-dev \
     libmicrohttpd-dev
 
-# Get source code
-# RUN mkdir -p ${SRC_DIR} && cd ${SRC_DIR} \
-#     && wget https://github.com/meetecho/janus-gateway/archive/refs/tags/v${JANUS_VERSION}.tar.gz \
-#     && tar -xf v${JANUS_VERSION}.tar.gz
-
 RUN mkdir -p ${SRC_DIR}/janus && cd ${SRC_DIR}/janus
 WORKDIR ${SRC_DIR}/janus
 COPY . .
 
 # Build janus from source and install it to /usr/local
-# WORKDIR ${SRC_DIR}/janus-gateway-${JANUS_VERSION}
 RUN sh autogen.sh
 RUN ./configure \
     --disable-rabbitmq \
     --disable-mqtt \
     --disable-all-plugins \
     --enable-plugin-videoroom \
+    --enable-plugin-telem \
     --enable-static
 RUN make && make install && make configs
 

@@ -198,14 +198,15 @@ bin_PROGRAMS = janus$(EXEEXT) janus-cfgconv$(EXEEXT) $(am__EXEEXT_1) \
 @ENABLE_PLUGIN_DUKTAPE_TRUE@	plugins/duktape/janus-sdp.js
 
 @ENABLE_PLUGIN_DUKTAPE_TRUE@am__append_78 = ../conf/janus.plugin.duktape.jcfg.sample.in
+@ENABLE_PLUGIN_TELEM_TRUE@am__append_79 = plugins/libjanus_telem.la
 
 # Post-processing
-@ENABLE_POST_PROCESSING_TRUE@am__append_79 = janus-pp-rec mjr2pcap
-@ENABLE_PCAP2MJR_TRUE@@ENABLE_POST_PROCESSING_TRUE@am__append_80 = pcap2mjr
-@ENABLE_POST_PROCESSING_TRUE@am__append_81 =  \
+@ENABLE_POST_PROCESSING_TRUE@am__append_80 = janus-pp-rec mjr2pcap
+@ENABLE_PCAP2MJR_TRUE@@ENABLE_POST_PROCESSING_TRUE@am__append_81 = pcap2mjr
+@ENABLE_POST_PROCESSING_TRUE@am__append_82 =  \
 @ENABLE_POST_PROCESSING_TRUE@	postprocessing/janus-pp-rec.1 \
 @ENABLE_POST_PROCESSING_TRUE@	postprocessing/mjr2pcap.1
-@ENABLE_PCAP2MJR_TRUE@@ENABLE_POST_PROCESSING_TRUE@am__append_82 = postprocessing/pcap2mjr.1
+@ENABLE_PCAP2MJR_TRUE@@ENABLE_POST_PROCESSING_TRUE@am__append_83 = postprocessing/pcap2mjr.1
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -361,17 +362,8 @@ loggers_libjanus_jsonlog_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 @ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_DEPENDENCIES =  \
 @ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	$(am__DEPENDENCIES_2)
 am__plugins_libjanus_audiobridge_la_SOURCES_DIST =  \
-	plugins/janus_audiobridge.c plugins/audiobridge-deps/jitter.c \
-	plugins/audiobridge-deps/resample.c \
-	plugins/audiobridge-deps/arch.h \
-	plugins/audiobridge-deps/os_support.h \
-	plugins/audiobridge-deps/speex/speex_jitter.h \
-	plugins/audiobridge-deps/speex/speex_resampler.h \
-	plugins/audiobridge-deps/speex/speexdsp_types.h \
-	plugins/audiobridge-deps/speex/speexdsp_config_types.h
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@am_plugins_libjanus_audiobridge_la_OBJECTS = plugins/libjanus_audiobridge_la-janus_audiobridge.lo \
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo \
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo
+	plugins/janus_audiobridge.c
+@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@am_plugins_libjanus_audiobridge_la_OBJECTS = plugins/libjanus_audiobridge_la-janus_audiobridge.lo
 plugins_libjanus_audiobridge_la_OBJECTS =  \
 	$(am_plugins_libjanus_audiobridge_la_OBJECTS)
 plugins_libjanus_audiobridge_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
@@ -481,6 +473,18 @@ plugins_libjanus_streaming_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(plugins_libjanus_streaming_la_LDFLAGS) $(LDFLAGS) -o $@
 @ENABLE_PLUGIN_STREAMING_TRUE@am_plugins_libjanus_streaming_la_rpath =  \
 @ENABLE_PLUGIN_STREAMING_TRUE@	-rpath $(plugindir)
+@ENABLE_PLUGIN_TELEM_TRUE@plugins_libjanus_telem_la_DEPENDENCIES =  \
+@ENABLE_PLUGIN_TELEM_TRUE@	$(am__DEPENDENCIES_2)
+am__plugins_libjanus_telem_la_SOURCES_DIST = plugins/janus_telem.c
+@ENABLE_PLUGIN_TELEM_TRUE@am_plugins_libjanus_telem_la_OBJECTS = plugins/libjanus_telem_la-janus_telem.lo
+plugins_libjanus_telem_la_OBJECTS =  \
+	$(am_plugins_libjanus_telem_la_OBJECTS)
+plugins_libjanus_telem_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
+	$(plugins_libjanus_telem_la_CFLAGS) $(CFLAGS) \
+	$(plugins_libjanus_telem_la_LDFLAGS) $(LDFLAGS) -o $@
+@ENABLE_PLUGIN_TELEM_TRUE@am_plugins_libjanus_telem_la_rpath = -rpath \
+@ENABLE_PLUGIN_TELEM_TRUE@	$(plugindir)
 @ENABLE_PLUGIN_TEXTROOM_TRUE@plugins_libjanus_textroom_la_DEPENDENCIES =  \
 @ENABLE_PLUGIN_TEXTROOM_TRUE@	$(am__DEPENDENCIES_2)
 am__plugins_libjanus_textroom_la_SOURCES_DIST =  \
@@ -605,8 +609,7 @@ am_janus_OBJECTS = janus-apierror.$(OBJEXT) janus-auth.$(OBJEXT) \
 	janus-dtls-bio.$(OBJEXT) janus-events.$(OBJEXT) \
 	janus-ice.$(OBJEXT) janus-janus.$(OBJEXT) janus-log.$(OBJEXT) \
 	janus-options.$(OBJEXT) janus-record.$(OBJEXT) \
-	janus-rtcp.$(OBJEXT) janus-rtp.$(OBJEXT) \
-	janus-rtpfwd.$(OBJEXT) janus-sctp.$(OBJEXT) \
+	janus-rtcp.$(OBJEXT) janus-rtp.$(OBJEXT) janus-sctp.$(OBJEXT) \
 	janus-sdp.$(OBJEXT) janus-sdp-utils.$(OBJEXT) \
 	janus-ip-utils.$(OBJEXT) janus-turnrest.$(OBJEXT) \
 	janus-utils.$(OBJEXT) janus-version.$(OBJEXT) \
@@ -715,11 +718,10 @@ am__depfiles_remade = ./$(DEPDIR)/janus-apierror.Po \
 	./$(DEPDIR)/janus-ip-utils.Po ./$(DEPDIR)/janus-janus.Po \
 	./$(DEPDIR)/janus-log.Po ./$(DEPDIR)/janus-options.Po \
 	./$(DEPDIR)/janus-record.Po ./$(DEPDIR)/janus-rtcp.Po \
-	./$(DEPDIR)/janus-rtp.Po ./$(DEPDIR)/janus-rtpfwd.Po \
-	./$(DEPDIR)/janus-sctp.Po ./$(DEPDIR)/janus-sdp-utils.Po \
-	./$(DEPDIR)/janus-sdp.Po ./$(DEPDIR)/janus-text2pcap.Po \
-	./$(DEPDIR)/janus-turnrest.Po ./$(DEPDIR)/janus-utils.Po \
-	./$(DEPDIR)/janus-version.Po \
+	./$(DEPDIR)/janus-rtp.Po ./$(DEPDIR)/janus-sctp.Po \
+	./$(DEPDIR)/janus-sdp-utils.Po ./$(DEPDIR)/janus-sdp.Po \
+	./$(DEPDIR)/janus-text2pcap.Po ./$(DEPDIR)/janus-turnrest.Po \
+	./$(DEPDIR)/janus-utils.Po ./$(DEPDIR)/janus-version.Po \
 	./$(DEPDIR)/janus_cfgconv-config.Po \
 	./$(DEPDIR)/janus_cfgconv-janus-cfgconv.Po \
 	./$(DEPDIR)/janus_cfgconv-log.Po \
@@ -749,11 +751,10 @@ am__depfiles_remade = ./$(DEPDIR)/janus-apierror.Po \
 	plugins/$(DEPDIR)/libjanus_recordplay_la-janus_recordplay.Plo \
 	plugins/$(DEPDIR)/libjanus_sip_la-janus_sip.Plo \
 	plugins/$(DEPDIR)/libjanus_streaming_la-janus_streaming.Plo \
+	plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Plo \
 	plugins/$(DEPDIR)/libjanus_textroom_la-janus_textroom.Plo \
 	plugins/$(DEPDIR)/libjanus_videocall_la-janus_videocall.Plo \
 	plugins/$(DEPDIR)/libjanus_videoroom_la-janus_videoroom.Plo \
-	plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Plo \
-	plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Plo \
 	plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_console.Plo \
 	plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_module_duktape.Plo \
 	postprocessing/$(DEPDIR)/janus_pp_rec-janus-pp-rec.Po \
@@ -812,6 +813,7 @@ SOURCES = $(events_libjanus_gelfevh_la_SOURCES) \
 	$(plugins_libjanus_recordplay_la_SOURCES) \
 	$(plugins_libjanus_sip_la_SOURCES) \
 	$(plugins_libjanus_streaming_la_SOURCES) \
+	$(plugins_libjanus_telem_la_SOURCES) \
 	$(plugins_libjanus_textroom_la_SOURCES) \
 	$(plugins_libjanus_videocall_la_SOURCES) \
 	$(plugins_libjanus_videoroom_la_SOURCES) \
@@ -838,6 +840,7 @@ DIST_SOURCES = $(am__events_libjanus_gelfevh_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_recordplay_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_sip_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_streaming_la_SOURCES_DIST) \
+	$(am__plugins_libjanus_telem_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_textroom_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_videocall_la_SOURCES_DIST) \
 	$(am__plugins_libjanus_videoroom_la_SOURCES_DIST) \
@@ -984,8 +987,6 @@ PLUGINS_LIBS = @PLUGINS_LIBS@
 POST_PROCESSING_CFLAGS = @POST_PROCESSING_CFLAGS@
 POST_PROCESSING_LIBS = @POST_PROCESSING_LIBS@
 RANLIB = @RANLIB@
-RNNOISE_CFLAGS = @RNNOISE_CFLAGS@
-RNNOISE_LIBS = @RNNOISE_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -1081,12 +1082,13 @@ conf_DATA = $(NULL) $(am__append_2) $(am__append_5) $(am__append_8) \
 	$(am__append_47) $(am__append_52) $(am__append_55) \
 	$(am__append_58) $(am__append_63) $(am__append_66) \
 	$(am__append_69) $(am__append_72) $(am__append_76)
-demosdir = $(datadir)/janus/html
+demosdir = $(datadir)/janus/demos
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL) $(am__append_40) $(am__append_43) \
 	$(am__append_46) $(am__append_51) $(am__append_54) \
 	$(am__append_57) $(am__append_62) $(am__append_65) \
-	$(am__append_68) $(am__append_71) $(am__append_75)
+	$(am__append_68) $(am__append_71) $(am__append_75) \
+	$(am__append_79)
 transportdir = $(libdir)/janus/transports
 transport_LTLIBRARIES = $(NULL) $(am__append_1) $(am__append_4) \
 	$(am__append_7) $(am__append_10) $(am__append_13) \
@@ -1137,8 +1139,6 @@ janus_SOURCES = \
 	rtcp.h \
 	rtp.c \
 	rtp.h \
-	rtpfwd.c \
-	rtpfwd.h \
 	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
@@ -1185,8 +1185,8 @@ janus_LDADD = \
 	$(LIBCURL_LDFLAGS) $(LIBCURL_LIBS) \
 	$(NULL)
 
-dist_man1_MANS = janus.1 janus-cfgconv.1 $(am__append_81) \
-	$(am__append_82)
+dist_man1_MANS = janus.1 janus-cfgconv.1 $(am__append_82) \
+	$(am__append_83)
 janus_cfgconv_SOURCES = \
 	janus-cfgconv.c \
 	config.c \
@@ -1324,14 +1324,10 @@ plugins_libadd = \
 	$(PLUGINS_LIBS) \
 	$(NULL)
 
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c \
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	plugins/audiobridge-deps/jitter.c plugins/audiobridge-deps/resample.c plugins/audiobridge-deps/arch.h \
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	plugins/audiobridge-deps/os_support.h plugins/audiobridge-deps/speex/speex_jitter.h plugins/audiobridge-deps/speex/speex_resampler.h \
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@	plugins/audiobridge-deps/speex/speexdsp_types.h plugins/audiobridge-deps/speex/speexdsp_config_types.h
-
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS) $(RNNOISE_CFLAGS) $(LIBSRTP_CFLAGS)
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS) $(RNNOISE_LDFLAGS) $(RNNOISE_LIBS)
-@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD) $(OGG_LIBADD) $(RNNOISE_LIBADD)
+@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
+@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS) $(OGG_CFLAGS) $(LIBSRTP_CFLAGS)
+@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS) $(OGG_LDFLAGS) $(OGG_LIBS)
+@ENABLE_PLUGIN_AUDIOBRIDGE_TRUE@plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD) $(OGG_LIBADD)
 @ENABLE_PLUGIN_ECHOTEST_TRUE@plugins_libjanus_echotest_la_SOURCES = plugins/janus_echotest.c
 @ENABLE_PLUGIN_ECHOTEST_TRUE@plugins_libjanus_echotest_la_CFLAGS = $(plugins_cflags)
 @ENABLE_PLUGIN_ECHOTEST_TRUE@plugins_libjanus_echotest_la_LDFLAGS = $(plugins_ldflags)
@@ -1376,6 +1372,10 @@ plugins_libadd = \
 @ENABLE_PLUGIN_DUKTAPE_TRUE@plugins_libjanus_duktape_la_CFLAGS = $(plugins_cflags) $(DUKTAPE_CFLAGS)
 @ENABLE_PLUGIN_DUKTAPE_TRUE@plugins_libjanus_duktape_la_LDFLAGS = $(plugins_ldflags) $(DUKTAPE_LDFLAGS) $(DUKTAPE_LIBS)
 @ENABLE_PLUGIN_DUKTAPE_TRUE@plugins_libjanus_duktape_la_LIBADD = $(plugins_libadd) $(DUKTAPE_LIBADD)
+@ENABLE_PLUGIN_TELEM_TRUE@plugins_libjanus_telem_la_SOURCES = plugins/janus_telem.c
+@ENABLE_PLUGIN_TELEM_TRUE@plugins_libjanus_telem_la_CFLAGS = $(plugins_cflags)
+@ENABLE_PLUGIN_TELEM_TRUE@plugins_libjanus_telem_la_LDFLAGS = $(plugins_ldflags)
+@ENABLE_PLUGIN_TELEM_TRUE@plugins_libjanus_telem_la_LIBADD = $(plugins_libadd)
 @ENABLE_POST_PROCESSING_TRUE@janus_pp_rec_SOURCES = \
 @ENABLE_POST_PROCESSING_TRUE@	postprocessing/pp-g711.c \
 @ENABLE_POST_PROCESSING_TRUE@	postprocessing/pp-g711.h \
@@ -1731,18 +1731,6 @@ plugins/$(DEPDIR)/$(am__dirstamp):
 	@: >>plugins/$(DEPDIR)/$(am__dirstamp)
 plugins/libjanus_audiobridge_la-janus_audiobridge.lo:  \
 	plugins/$(am__dirstamp) plugins/$(DEPDIR)/$(am__dirstamp)
-plugins/audiobridge-deps/$(am__dirstamp):
-	@$(MKDIR_P) plugins/audiobridge-deps
-	@: >>plugins/audiobridge-deps/$(am__dirstamp)
-plugins/audiobridge-deps/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) plugins/audiobridge-deps/$(DEPDIR)
-	@: >>plugins/audiobridge-deps/$(DEPDIR)/$(am__dirstamp)
-plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo:  \
-	plugins/audiobridge-deps/$(am__dirstamp) \
-	plugins/audiobridge-deps/$(DEPDIR)/$(am__dirstamp)
-plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo:  \
-	plugins/audiobridge-deps/$(am__dirstamp) \
-	plugins/audiobridge-deps/$(DEPDIR)/$(am__dirstamp)
 
 plugins/libjanus_audiobridge.la: $(plugins_libjanus_audiobridge_la_OBJECTS) $(plugins_libjanus_audiobridge_la_DEPENDENCIES) $(EXTRA_plugins_libjanus_audiobridge_la_DEPENDENCIES) plugins/$(am__dirstamp)
 	$(AM_V_CCLD)$(plugins_libjanus_audiobridge_la_LINK) $(am_plugins_libjanus_audiobridge_la_rpath) $(plugins_libjanus_audiobridge_la_OBJECTS) $(plugins_libjanus_audiobridge_la_LIBADD) $(LIBS)
@@ -1797,6 +1785,11 @@ plugins/libjanus_streaming_la-janus_streaming.lo:  \
 
 plugins/libjanus_streaming.la: $(plugins_libjanus_streaming_la_OBJECTS) $(plugins_libjanus_streaming_la_DEPENDENCIES) $(EXTRA_plugins_libjanus_streaming_la_DEPENDENCIES) plugins/$(am__dirstamp)
 	$(AM_V_CCLD)$(plugins_libjanus_streaming_la_LINK) $(am_plugins_libjanus_streaming_la_rpath) $(plugins_libjanus_streaming_la_OBJECTS) $(plugins_libjanus_streaming_la_LIBADD) $(LIBS)
+plugins/libjanus_telem_la-janus_telem.lo: plugins/$(am__dirstamp) \
+	plugins/$(DEPDIR)/$(am__dirstamp)
+
+plugins/libjanus_telem.la: $(plugins_libjanus_telem_la_OBJECTS) $(plugins_libjanus_telem_la_DEPENDENCIES) $(EXTRA_plugins_libjanus_telem_la_DEPENDENCIES) plugins/$(am__dirstamp)
+	$(AM_V_CCLD)$(plugins_libjanus_telem_la_LINK) $(am_plugins_libjanus_telem_la_rpath) $(plugins_libjanus_telem_la_OBJECTS) $(plugins_libjanus_telem_la_LIBADD) $(LIBS)
 plugins/libjanus_textroom_la-janus_textroom.lo:  \
 	plugins/$(am__dirstamp) plugins/$(DEPDIR)/$(am__dirstamp)
 
@@ -1936,8 +1929,6 @@ mostlyclean-compile:
 	-rm -f loggers/*.lo
 	-rm -f plugins/*.$(OBJEXT)
 	-rm -f plugins/*.lo
-	-rm -f plugins/audiobridge-deps/*.$(OBJEXT)
-	-rm -f plugins/audiobridge-deps/*.lo
 	-rm -f plugins/duktape-deps/*.$(OBJEXT)
 	-rm -f plugins/duktape-deps/*.lo
 	-rm -f postprocessing/*.$(OBJEXT)
@@ -1961,7 +1952,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-record.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-rtcp.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-rtp.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-rtpfwd.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-sctp.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-sdp-utils.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/janus-sdp.Po@am__quote@ # am--include-marker
@@ -2001,11 +1991,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_recordplay_la-janus_recordplay.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_sip_la-janus_sip.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_streaming_la-janus_streaming.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_textroom_la-janus_textroom.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_videocall_la-janus_videocall.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/$(DEPDIR)/libjanus_videoroom_la-janus_videoroom.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_console.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_module_duktape.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@postprocessing/$(DEPDIR)/janus_pp_rec-janus-pp-rec.Po@am__quote@ # am--include-marker
@@ -2117,20 +2106,6 @@ plugins/libjanus_audiobridge_la-janus_audiobridge.lo: plugins/janus_audiobridge.
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_audiobridge_la_CFLAGS) $(CFLAGS) -c -o plugins/libjanus_audiobridge_la-janus_audiobridge.lo `test -f 'plugins/janus_audiobridge.c' || echo '$(srcdir)/'`plugins/janus_audiobridge.c
 
-plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo: plugins/audiobridge-deps/jitter.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_audiobridge_la_CFLAGS) $(CFLAGS) -MT plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo -MD -MP -MF plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Tpo -c -o plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo `test -f 'plugins/audiobridge-deps/jitter.c' || echo '$(srcdir)/'`plugins/audiobridge-deps/jitter.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Tpo plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='plugins/audiobridge-deps/jitter.c' object='plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_audiobridge_la_CFLAGS) $(CFLAGS) -c -o plugins/audiobridge-deps/libjanus_audiobridge_la-jitter.lo `test -f 'plugins/audiobridge-deps/jitter.c' || echo '$(srcdir)/'`plugins/audiobridge-deps/jitter.c
-
-plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo: plugins/audiobridge-deps/resample.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_audiobridge_la_CFLAGS) $(CFLAGS) -MT plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo -MD -MP -MF plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Tpo -c -o plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo `test -f 'plugins/audiobridge-deps/resample.c' || echo '$(srcdir)/'`plugins/audiobridge-deps/resample.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Tpo plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='plugins/audiobridge-deps/resample.c' object='plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_audiobridge_la_CFLAGS) $(CFLAGS) -c -o plugins/audiobridge-deps/libjanus_audiobridge_la-resample.lo `test -f 'plugins/audiobridge-deps/resample.c' || echo '$(srcdir)/'`plugins/audiobridge-deps/resample.c
-
 plugins/libjanus_duktape_la-janus_duktape.lo: plugins/janus_duktape.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_duktape_la_CFLAGS) $(CFLAGS) -MT plugins/libjanus_duktape_la-janus_duktape.lo -MD -MP -MF plugins/$(DEPDIR)/libjanus_duktape_la-janus_duktape.Tpo -c -o plugins/libjanus_duktape_la-janus_duktape.lo `test -f 'plugins/janus_duktape.c' || echo '$(srcdir)/'`plugins/janus_duktape.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) plugins/$(DEPDIR)/libjanus_duktape_la-janus_duktape.Tpo plugins/$(DEPDIR)/libjanus_duktape_la-janus_duktape.Plo
@@ -2207,6 +2182,13 @@ plugins/libjanus_streaming_la-janus_streaming.lo: plugins/janus_streaming.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='plugins/janus_streaming.c' object='plugins/libjanus_streaming_la-janus_streaming.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_streaming_la_CFLAGS) $(CFLAGS) -c -o plugins/libjanus_streaming_la-janus_streaming.lo `test -f 'plugins/janus_streaming.c' || echo '$(srcdir)/'`plugins/janus_streaming.c
+
+plugins/libjanus_telem_la-janus_telem.lo: plugins/janus_telem.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_telem_la_CFLAGS) $(CFLAGS) -MT plugins/libjanus_telem_la-janus_telem.lo -MD -MP -MF plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Tpo -c -o plugins/libjanus_telem_la-janus_telem.lo `test -f 'plugins/janus_telem.c' || echo '$(srcdir)/'`plugins/janus_telem.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Tpo plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='plugins/janus_telem.c' object='plugins/libjanus_telem_la-janus_telem.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_telem_la_CFLAGS) $(CFLAGS) -c -o plugins/libjanus_telem_la-janus_telem.lo `test -f 'plugins/janus_telem.c' || echo '$(srcdir)/'`plugins/janus_telem.c
 
 plugins/libjanus_textroom_la-janus_textroom.lo: plugins/janus_textroom.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_libjanus_textroom_la_CFLAGS) $(CFLAGS) -MT plugins/libjanus_textroom_la-janus_textroom.lo -MD -MP -MF plugins/$(DEPDIR)/libjanus_textroom_la-janus_textroom.Tpo -c -o plugins/libjanus_textroom_la-janus_textroom.lo `test -f 'plugins/janus_textroom.c' || echo '$(srcdir)/'`plugins/janus_textroom.c
@@ -2452,20 +2434,6 @@ janus-rtp.obj: rtp.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rtp.c' object='janus-rtp.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -c -o janus-rtp.obj `if test -f 'rtp.c'; then $(CYGPATH_W) 'rtp.c'; else $(CYGPATH_W) '$(srcdir)/rtp.c'; fi`
-
-janus-rtpfwd.o: rtpfwd.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -MT janus-rtpfwd.o -MD -MP -MF $(DEPDIR)/janus-rtpfwd.Tpo -c -o janus-rtpfwd.o `test -f 'rtpfwd.c' || echo '$(srcdir)/'`rtpfwd.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/janus-rtpfwd.Tpo $(DEPDIR)/janus-rtpfwd.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rtpfwd.c' object='janus-rtpfwd.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -c -o janus-rtpfwd.o `test -f 'rtpfwd.c' || echo '$(srcdir)/'`rtpfwd.c
-
-janus-rtpfwd.obj: rtpfwd.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -MT janus-rtpfwd.obj -MD -MP -MF $(DEPDIR)/janus-rtpfwd.Tpo -c -o janus-rtpfwd.obj `if test -f 'rtpfwd.c'; then $(CYGPATH_W) 'rtpfwd.c'; else $(CYGPATH_W) '$(srcdir)/rtpfwd.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/janus-rtpfwd.Tpo $(DEPDIR)/janus-rtpfwd.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='rtpfwd.c' object='janus-rtpfwd.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -c -o janus-rtpfwd.obj `if test -f 'rtpfwd.c'; then $(CYGPATH_W) 'rtpfwd.c'; else $(CYGPATH_W) '$(srcdir)/rtpfwd.c'; fi`
 
 janus-sctp.o: sctp.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(janus_CFLAGS) $(CFLAGS) -MT janus-sctp.o -MD -MP -MF $(DEPDIR)/janus-sctp.Tpo -c -o janus-sctp.o `test -f 'sctp.c' || echo '$(srcdir)/'`sctp.c
@@ -3021,7 +2989,6 @@ clean-libtool:
 	-rm -rf events/.libs events/_libs
 	-rm -rf loggers/.libs loggers/_libs
 	-rm -rf plugins/.libs plugins/_libs
-	-rm -rf plugins/audiobridge-deps/.libs plugins/audiobridge-deps/_libs
 	-rm -rf plugins/duktape-deps/.libs plugins/duktape-deps/_libs
 	-rm -rf transports/.libs transports/_libs
 install-man1: $(dist_man1_MANS)
@@ -3403,8 +3370,6 @@ distclean-generic:
 	-$(am__rm_f) loggers/$(am__dirstamp)
 	-$(am__rm_f) plugins/$(DEPDIR)/$(am__dirstamp)
 	-$(am__rm_f) plugins/$(am__dirstamp)
-	-$(am__rm_f) plugins/audiobridge-deps/$(DEPDIR)/$(am__dirstamp)
-	-$(am__rm_f) plugins/audiobridge-deps/$(am__dirstamp)
 	-$(am__rm_f) plugins/duktape-deps/$(DEPDIR)/$(am__dirstamp)
 	-$(am__rm_f) plugins/duktape-deps/$(am__dirstamp)
 	-$(am__rm_f) postprocessing/$(DEPDIR)/$(am__dirstamp)
@@ -3437,7 +3402,6 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/janus-record.Po
 	-rm -f ./$(DEPDIR)/janus-rtcp.Po
 	-rm -f ./$(DEPDIR)/janus-rtp.Po
-	-rm -f ./$(DEPDIR)/janus-rtpfwd.Po
 	-rm -f ./$(DEPDIR)/janus-sctp.Po
 	-rm -f ./$(DEPDIR)/janus-sdp-utils.Po
 	-rm -f ./$(DEPDIR)/janus-sdp.Po
@@ -3477,11 +3441,10 @@ distclean: distclean-am
 	-rm -f plugins/$(DEPDIR)/libjanus_recordplay_la-janus_recordplay.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_sip_la-janus_sip.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_streaming_la-janus_streaming.Plo
+	-rm -f plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_textroom_la-janus_textroom.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_videocall_la-janus_videocall.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_videoroom_la-janus_videoroom.Plo
-	-rm -f plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Plo
-	-rm -f plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Plo
 	-rm -f plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_console.Plo
 	-rm -f plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_module_duktape.Plo
 	-rm -f postprocessing/$(DEPDIR)/janus_pp_rec-janus-pp-rec.Po
@@ -3571,7 +3534,6 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/janus-record.Po
 	-rm -f ./$(DEPDIR)/janus-rtcp.Po
 	-rm -f ./$(DEPDIR)/janus-rtp.Po
-	-rm -f ./$(DEPDIR)/janus-rtpfwd.Po
 	-rm -f ./$(DEPDIR)/janus-sctp.Po
 	-rm -f ./$(DEPDIR)/janus-sdp-utils.Po
 	-rm -f ./$(DEPDIR)/janus-sdp.Po
@@ -3611,11 +3573,10 @@ maintainer-clean: maintainer-clean-am
 	-rm -f plugins/$(DEPDIR)/libjanus_recordplay_la-janus_recordplay.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_sip_la-janus_sip.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_streaming_la-janus_streaming.Plo
+	-rm -f plugins/$(DEPDIR)/libjanus_telem_la-janus_telem.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_textroom_la-janus_textroom.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_videocall_la-janus_videocall.Plo
 	-rm -f plugins/$(DEPDIR)/libjanus_videoroom_la-janus_videoroom.Plo
-	-rm -f plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-jitter.Plo
-	-rm -f plugins/audiobridge-deps/$(DEPDIR)/libjanus_audiobridge_la-resample.Plo
 	-rm -f plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_console.Plo
 	-rm -f plugins/duktape-deps/$(DEPDIR)/libjanus_duktape_la-duk_module_duktape.Plo
 	-rm -f postprocessing/$(DEPDIR)/janus_pp_rec-janus-pp-rec.Po

@@ -742,6 +742,8 @@ LOGGERS_LIBS
 LOGGERS_CFLAGS
 EVENTS_LIBS
 EVENTS_CFLAGS
+ENABLE_PLUGIN_TELEM_FALSE
+ENABLE_PLUGIN_TELEM_TRUE
 ENABLE_PLUGIN_TEXTROOM_FALSE
 ENABLE_PLUGIN_TEXTROOM_TRUE
 ENABLE_PLUGIN_VIDEOROOM_FALSE
@@ -1016,6 +1018,7 @@ enable_plugin_streaming
 enable_plugin_textroom
 enable_plugin_videocall
 enable_plugin_videoroom
+enable_plugin_telem
 enable_javascript_es_module
 enable_javascript_umd_module
 enable_javascript_iife_module
@@ -1770,6 +1773,7 @@ Optional Features:
                           Disable videocall plugin
   --disable-plugin-videoroom
                           Disable videoroom plugin
+  --disable-plugin-telem  Disable telem plugin
   --enable-javascript-es-module
                           Generate an ECMAScript style module from janus.js
   --enable-javascript-umd-module
@@ -15306,6 +15310,10 @@ fi
 then :
   enable_plugin_videoroom=no
 fi
+               if test "x$enable_plugin_telem" != "xyes"
+then :
+  enable_plugin_telem=no
+fi
 
 fi
 
@@ -17867,6 +17875,19 @@ esac
 fi
 
 
+# Check whether --enable-plugin-telem was given.
+if test ${enable_plugin_telem+y}
+then :
+  enableval=$enable_plugin_telem; if test "x$enable_plugin_telem" != "xyes"
+then :
+  enable_plugin_telem=no
+fi
+else case e in #(
+  e) enable_plugin_telem=yes ;;
+esac
+fi
+
+
 
 pkg_failed=no
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for sofia-sip-ua" >&5
@@ -18464,6 +18485,7 @@ fi
 
 
 
+
  if test "x$enable_plugin_audiobridge" = "xyes"; then
   ENABLE_PLUGIN_AUDIOBRIDGE_TRUE=
   ENABLE_PLUGIN_AUDIOBRIDGE_FALSE='#'
@@ -18550,6 +18572,14 @@ fi
 else
   ENABLE_PLUGIN_TEXTROOM_TRUE='#'
   ENABLE_PLUGIN_TEXTROOM_FALSE=
+fi
+
+ if test "x$enable_plugin_telem" = "xyes"; then
+  ENABLE_PLUGIN_TELEM_TRUE=
+  ENABLE_PLUGIN_TELEM_FALSE='#'
+else
+  ENABLE_PLUGIN_TELEM_TRUE='#'
+  ENABLE_PLUGIN_TELEM_FALSE=
 fi
 
 
@@ -19651,6 +19681,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${ENABLE_PLUGIN_TEXTROOM_TRUE}" && test -z "${ENABLE_PLUGIN_TEXTROOM_FALSE}"; then
   as_fn_error $? "conditional \"ENABLE_PLUGIN_TEXTROOM\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${ENABLE_PLUGIN_TELEM_TRUE}" && test -z "${ENABLE_PLUGIN_TELEM_FALSE}"; then
+  as_fn_error $? "conditional \"ENABLE_PLUGIN_TELEM\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${ENABLE_JAVASCRIPT_ES_MODULE_TRUE}" && test -z "${ENABLE_JAVASCRIPT_ES_MODULE_FALSE}"; then

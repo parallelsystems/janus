@@ -299,8 +299,9 @@ struct janus_plugin {
 	void (* const setup_media)(janus_plugin_session *handle);
 	/*! \brief Method to handle an incoming RTP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @param[in] packet The RTP packet and related data */
-	void (* const incoming_rtp)(janus_plugin_session *handle, janus_plugin_rtp *packet);
+	 * @param[in] packet The RTP packet and related data
+	 * @param[in] peer_connection An opaque pointer for the plugin to get access to the greater peerconnection context */
+	void (* const incoming_rtp)(janus_plugin_session *handle, janus_plugin_rtp *packet, void *peer_connection);
 	/*! \brief Method to handle an incoming RTCP packet from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] packet The RTP packet and related data */

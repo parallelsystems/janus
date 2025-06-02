@@ -2859,7 +2859,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				{
 					uint16_t rtp_pkt_seqnum = ((janus_rtp_header*)rtp.buffer)->seq_number;
 					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Sending RTP packet %"SCNu16" as %"SCNu16" to (VIDEOROOM) plugin\n", handle->handle_id, ntohs(backup.seq_number), ntohs(rtp_pkt_seqnum));
-					plugin->incoming_rtp(handle->app_handle, &rtp);
+					plugin->incoming_rtp(handle->app_handle, &rtp, NULL);
 				}
 
 				/* Restore the header for the stats (plugins may have messed with it) */

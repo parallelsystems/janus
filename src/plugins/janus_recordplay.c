@@ -304,7 +304,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error);
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 json_t *janus_recordplay_handle_admin_message(json_t *message);
 void janus_recordplay_setup_media(janus_plugin_session *handle);
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet);
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, janus_plugin_rtcp *packet);
 void janus_recordplay_incoming_data(janus_plugin_session *handle, janus_plugin_data *packet);
 void janus_recordplay_slow_link(janus_plugin_session *handle, int mindex, gboolean video, gboolean uplink);
@@ -1281,7 +1281,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 	}
 }
 
-void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet) {
+void janus_recordplay_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *packet, void *ignore) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;

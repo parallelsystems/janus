@@ -185,6 +185,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_videocall=no])
                AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
                      [enable_plugin_videoroom=no])
+               AS_IF([test "x$enable_plugin_telem" != "xyes"],
+                     [enable_plugin_telem=no])
               ],
               [])
 
@@ -768,6 +770,13 @@ AC_ARG_ENABLE([plugin-videoroom],
                      [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
+AC_ARG_ENABLE([plugin-telem],
+              [AS_HELP_STRING([--disable-plugin-telem],
+                              [Disable telem plugin])],
+              [AS_IF([test "x$enable_plugin_telem" != "xyes"],
+                     [enable_plugin_telem=no])],
+              [enable_plugin_telem=yes])
+
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
                   [
@@ -837,6 +846,7 @@ PKG_CHECK_MODULES([DUKTAPE],
 AC_SUBST([DUKTAPE_CFLAGS])
 AC_SUBST([DUKTAPE_LIBS])
 
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_DUKTAPE], [test "x$enable_plugin_duktape" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
@@ -848,6 +858,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_TELEM], [test "x$enable_plugin_telem" = "xyes"])
 
 
 ##
