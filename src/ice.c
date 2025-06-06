@@ -459,7 +459,7 @@ static gboolean janus_ice_nacked_packet_cleanup(gpointer user_data) {
 	janus_ice_nacked_packet *pkt = (janus_ice_nacked_packet *)user_data;
 
 	if(pkt->medium && pkt->medium->pc && pkt->medium->pc->handle) {
-		JANUS_LOG(LOG_NACK, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Cleaning up NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 			pkt->medium->pc->handle->handle_id, pkt->seq_number, pkt->medium->ssrc_peer[pkt->vindex], pkt->vindex);
 		g_hash_table_remove(pkt->medium->rtx_nacked[pkt->vindex], GUINT_TO_POINTER(pkt->seq_number));
 		g_hash_table_remove(pkt->medium->pending_nacked_cleanup, GUINT_TO_POINTER(pkt->source_id));
@@ -670,7 +670,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_peerconnection *pc, 
 		if((medium->type == JANUS_MEDIA_AUDIO && !audio) || (medium->type == JANUS_MEDIA_VIDEO && !video))
 			continue;
 		if(medium->retransmit_buffer) {
-			JANUS_LOG(LOG_NACK, "Outbound NACK queue is %lu long, queue time %lu msec...\n", g_queue_get_length(medium->retransmit_buffer), (gint64)medium->nack_queue_ms);
+			JANUS_LOG(LOG_HUGE, "Outbound NACK queue is %lu long, queue time %lu msec...\n", g_queue_get_length(medium->retransmit_buffer), (gint64)medium->nack_queue_ms);
 
 			janus_rtp_packet *p = (janus_rtp_packet *)g_queue_peek_head(medium->retransmit_buffer);
 			while(p && (!now || (now - p->created >= (gint64)medium->nack_queue_ms*1000))) {
@@ -680,14 +680,14 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_peerconnection *pc, 
 				janus_rtp_header *header = (janus_rtp_header *)p->data;
 				guint16 seq = ntohs(header->seq_number);
 				guint32 ssrc = ntohl(header->ssrc);
-				JANUS_LOG(LOG_NACK, "  rm seqnum %"SCNu16" (ssrc %"SCNu32") from NACK queue\n", seq, ssrc);
+				JANUS_LOG(LOG_HUGE, "  rm seqnum %"SCNu16" (ssrc %"SCNu32") from NACK queue\n", seq, ssrc);
 				g_hash_table_remove(medium->retransmit_seqs, GUINT_TO_POINTER(seq));
 				/* Free the packet */
 				janus_ice_free_rtp_packet(p);
 				p = (janus_rtp_packet *)g_queue_peek_head(medium->retransmit_buffer);
 			}
 
-			JANUS_LOG(LOG_NACK, "    now %lu long\n", g_queue_get_length(medium->retransmit_buffer));
+			JANUS_LOG(LOG_HUGE, "    now %lu long\n", g_queue_get_length(medium->retransmit_buffer));
 		}
 	}
 }
@@ -2997,7 +2997,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								gpointer entry = g_hash_table_lookup(medium->rtx_nacked[vindex], GUINT_TO_POINTER(cur_seq->seq));
 								if (!entry)
 								{
-									JANUS_LOG(LOG_NACK, "      Adding a 5 second RTX expiry to packet %"SCNu16"\n", cur_seq->seq);
+									JANUS_LOG(LOG_VERB, "      Adding a 5 second RTX expiry to packet %"SCNu16"\n", cur_seq->seq);
 
 									/* We don't track it forever, though: add a timed source to remove it in a few seconds */
 									janus_ice_nacked_packet *np = g_malloc(sizeof(janus_ice_nacked_packet));
@@ -3037,7 +3037,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				guint nacks_count = g_slist_length(nacks);
 				if(nacks_count) {
 					/* Generate a NACK and send it */
-					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Now sending NACK for %u missed packets (%s stream #%d)\n",
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Now sending NACK for %u missed packets (%s stream #%d)\n",
 						handle->handle_id, nacks_count, video ? "video" : "audio", vindex);
 
 					char nackbuf[120];
@@ -3171,21 +3171,21 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
-						JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						int in_rb = 0;
 						/* Check if we have the packet */
 						janus_rtp_packet *p = g_hash_table_lookup(retransmit_seqs, GUINT_TO_POINTER(seqnr));
 						if(p == NULL) {
-							JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Can't retransmit packet %u, we don't have it...\n", handle->handle_id, seqnr);
 						} else {
 							/* Should we retransmit this packet? */
 							if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
-								JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
+								JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
 								list = list->next;
 								continue;
 							}
 							in_rb = 1;
-							JANUS_LOG(LOG_NACK, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
 							p->last_retransmit = now;
 							retransmits_cnt++;
 							/* Enqueue it */
@@ -3242,7 +3242,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				if(medium->retransmit_recent_cnt &&
 						now - medium->retransmit_log_ts > 5*G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Retransmitted %u packets due to NACK (%s stream #%d)\n",
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Retransmitted %u packets due to NACK (%s stream #%d)\n",
 						handle->handle_id, medium->retransmit_recent_cnt, video ? "video" : "audio", vindex);
 					medium->retransmit_recent_cnt = 0;
 					medium->retransmit_log_ts = now;
@@ -4754,7 +4754,7 @@ static gboolean janus_ice_outgoing_traffic_handle(janus_ice_handle *handle, janu
 			if(pkt->encrypted) {
 				/* Already RTP (probably a retransmission?) */
 				janus_rtp_header *header = (janus_rtp_header *)pkt->data;
-				JANUS_LOG(LOG_NACK, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
 				int sent = nice_agent_send(handle->agent, pc->stream_id, pc->component_id, pkt->length, (const gchar *)pkt->data);
 				if(sent < pkt->length) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, pkt->length);

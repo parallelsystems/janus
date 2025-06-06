@@ -1205,7 +1205,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len, guint64 handle_id_opt) {
 				janus_rtcp_fb *rtcpfb = (janus_rtcp_fb *)rtcp;
 				int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
 				if(nacks > 0) {
-					JANUS_LOG(LOG_NACK, "[%"SCNu64"] RTCP packet: got %d nacks\n", handle_id_opt,  nacks);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] RTCP packet: got %d nacks\n", handle_id_opt,  nacks);
 					janus_rtcp_nack *nack = NULL;
 					uint16_t pid = 0;
 					uint16_t blp = 0;
@@ -1223,7 +1223,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len, guint64 handle_id_opt) {
 								list = g_slist_append(list, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
-						JANUS_LOG(LOG_NACK, "         NACK %d - Packet %"SCNu16" / %s", i, pid, bitmask);
+						JANUS_LOG(LOG_VERB, "         NACK %d - Packet %"SCNu16" / %s", i, pid, bitmask);
 					}
 				}
 				break;
