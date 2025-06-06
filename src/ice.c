@@ -680,14 +680,14 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_peerconnection *pc, 
 				janus_rtp_header *header = (janus_rtp_header *)p->data;
 				guint16 seq = ntohs(header->seq_number);
 				guint32 ssrc = ntohl(header->ssrc);
-				JANUS_LOG(LOG_HUGE, "  rm seqnum %"SCNu16" (ssrc %"SCNu32") from NACK queue\n", seq, ssrc);
+				JANUS_LOG(LOG_HUGE, "rm seqnum %"SCNu16" (ssrc %"SCNu32") from NACK queue\n", seq, ssrc);
 				g_hash_table_remove(medium->retransmit_seqs, GUINT_TO_POINTER(seq));
 				/* Free the packet */
 				janus_ice_free_rtp_packet(p);
 				p = (janus_rtp_packet *)g_queue_peek_head(medium->retransmit_buffer);
 			}
 
-			JANUS_LOG(LOG_HUGE, "    now %lu long\n", g_queue_get_length(medium->retransmit_buffer));
+			JANUS_LOG(LOG_HUGE, "Outbound NACK queue is now %lu long\n", g_queue_get_length(medium->retransmit_buffer));
 		}
 	}
 }

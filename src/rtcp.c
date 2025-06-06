@@ -1538,7 +1538,7 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	guint16 pid = GPOINTER_TO_UINT(nacks->data);
 	nack->pid = htons(pid);
 
-	JANUS_LOG(LOG_INFO, "   Sending Publisher NACK RTCP msg with root seqnum %"SCNu16"\n", pid);
+	JANUS_LOG(LOG_VERB, "   Sending Publisher NACK RTCP msg with root seqnum %"SCNu16"\n", pid);
 
 	nacks = nacks->next;
 	int words = 3;

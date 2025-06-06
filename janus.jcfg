@@ -13,9 +13,9 @@ general: {
         #log_to_stdout = false                                  # Whether the Janus output should be written
                                                                                         # to stdout or not (default=true)
         log_to_file = "/tmp/janus.log"
-        debug_level = 5
+        debug_level = 4
         debug_timestamps = true
-        #debug_colors = false                                   # Whether colors should be disabled in the log
+        debug_colors = false                                   # Whether colors should be disabled in the log
         #debug_locks = true                                             # Whether to enable debugging of locks (very verbose!)
         #log_prefix = "[janus] "                                # In case you want log lines to be prefixed by some
                                                                                         # custom text, you can use the 'log_prefix' property.
