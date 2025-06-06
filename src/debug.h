@@ -79,6 +79,7 @@ static const char *janus_log_prefix[] = {
 	"",
 	"",
 	"",
+	"",
 };
 ///@}
 #pragma GCC diagnostic pop
