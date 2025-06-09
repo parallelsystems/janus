@@ -89,7 +89,7 @@ janus_logger *create(void) {
 
 /* Initialize the plugin */
 static int janus_threadedlogger_init(const char *server_name, const char *config_path) {
-    if(g_atomic_int_get(&initialized) || !g_atomic_int_get(&stopping)) {
+    if(g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping)) {
         JANUS_LOG(LOG_ERR, "Threaded logger already initialized\n");
         return -1;
     }
@@ -246,10 +246,10 @@ static void *worker_thread_func(void *arg) {
             gssize ret = g_socket_send_to(log_socket, log_address, telemetered_msg, strlen(telemetered_msg), NULL, &error);
             if(ret < 0) {
                 if(error) {
-                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%llu): %s\n", ret, error->message);
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%lld): %s\n", ret, error->message);
                     g_error_free(error);
                 } else {
-                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%llu)\n", ret);
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%lld)\n", ret);
                 }
             }
             

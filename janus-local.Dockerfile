@@ -55,6 +55,7 @@ RUN ./configure \
     --disable-rabbitmq \
     --disable-mqtt \
     --disable-all-plugins \
+    --disable-all-loggers \
     --enable-plugin-videoroom \
     --enable-telem-logger \
     --enable-static
