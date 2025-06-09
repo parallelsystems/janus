@@ -13385,3 +13385,16 @@ static void *janus_videoroom_remote_publisher_thread(void *user_data) {
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
+
+/* Special logger macro that directly sends specifically-formatted lines to
+	Janus' logging system. These telemetered logs are always logged, regardless
+	of the configured runtime log level of the Janus core.
+ */
+#define JANUS_VIDEOROOM_TELEMETER_LOG(format, ...) \
+do { \
+	char janus_log_ts[64] = ""; \
+	snprintf(janus_log_ts, sizeof(janus_log_ts), "[%ld]", janus_get_real_time()); \
+	JANUS_PRINT("%s" format, \
+		janus_log_ts, \
+		##__VA_ARGS__); \
+} while (0)

@@ -375,6 +375,14 @@ conf_DATA += ../conf/janus.logger.jsonlog.jcfg.sample
 EXTRA_DIST += ../conf/janus.logger.jsonlog.jcfg.sample
 endif
 
+if ENABLE_TELEMLOGGER
+logger_LTLIBRARIES += loggers/libjanus_telem.la
+loggers_libjanus_telem_la_SOURCES = loggers/janus_telem.c
+loggers_libjanus_telem_la_CFLAGS = $(loggers_cflags)
+loggers_libjanus_telem_la_LDFLAGS = $(loggers_ldflags)
+loggers_libjanus_telem_la_LIBADD = $(loggers_libadd)
+endif
+
 ##
 # Plugins
 ##

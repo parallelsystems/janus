@@ -1,0 +1,270 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdatomic.h>
+#include <gio/gio.h>
+
+#include "logger.h"
+#include "../debug.h"
+
+/* Plugin information */
+#define JANUS_THREADED_LOGGER_VERSION		    1
+#define JANUS_THREADED_LOGGER_VERSION_STRING	"0.0.1"
+#define JANUS_THREADED_LOGGER_DESCRIPTION	    "This plugin pushes telemetry data to a Parallel Systems Telemetry client over UDP."
+#define JANUS_THREADED_LOGGER_NAME		        "JANUS Telemetry plugin"
+#define JANUS_THREADED_LOGGER_AUTHOR		    "Parallel Systems"
+#define JANUS_THREADED_LOGGER_PACKAGE		    "janus.plugin.threadedlogger"
+
+/* Filter configuration - modify this to change the filter string */
+static const char *LOG_FILTER_PREFIX = "TELEM";
+
+/* Socket configuration */
+#define LOCALHOST "127.0.0.1"
+/* Port on which the Telemetry messages are streamed out of */
+#define LOG_UDP_PORT 9090
+
+/* Log entry structure */
+typedef struct log_entry {
+    /// @brief Monotonically increasing counter
+    uint64_t seqnum;
+    /// @brief Monotonically increasing timestamp when this message was printed
+    uint64_t timestamp;
+    /// @brief The log message to telemeter
+    char *message;
+} log_entry_t;
+
+
+/* Plugin state */
+static volatile gint initialized = 0, stopping = 0;
+/* Worker thread */
+static GThread *logger_thread = NULL;
+
+/* Telemetry log queue */
+static GAsyncQueue *log_queue = NULL;
+
+/* IO Sockets */
+static GSocket *log_socket = NULL;
+static GSocketAddress *log_address = NULL;
+
+/* The sequence number seed counter */
+static atomic_uint_fast64_t seqnum = 0;
+
+/* JANUS Plugin methods */
+static int janus_threadedlogger_init(const char *server_name, const char *config_path);
+static void janus_threadedlogger_destroy(void);
+static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char *line);
+int janus_threadedlogger_get_api_compatibility(void);
+int janus_threadedlogger_get_version(void);
+const char *janus_threadedlogger_get_version_string(void);
+const char *janus_threadedlogger_get_description(void);
+const char *janus_threadedlogger_get_name(void);
+const char *janus_threadedlogger_get_author(void);
+const char *janus_threadedlogger_get_package(void);
+
+/* Forward declarations of specific plugin functions */
+static void *worker_thread_func(void *arg);
+static void free_log_entry(log_entry_t *entry);
+
+/* Plugin descriptor */
+static janus_logger janus_threadedlogger_logger = {
+    .init = janus_threadedlogger_init,
+    .destroy = janus_threadedlogger_destroy,
+    .get_api_compatibility = janus_threadedlogger_get_api_compatibility,
+    .get_version = janus_threadedlogger_get_version,
+    .get_version_string = janus_threadedlogger_get_version_string,
+    .get_description = janus_threadedlogger_get_description,
+    .get_name = janus_threadedlogger_get_name,
+    .get_author = janus_threadedlogger_get_author,
+    .get_package = janus_threadedlogger_get_package,
+    .incoming_logline = janus_threadedlogger_incoming_logline,
+};
+
+/* Plugin creator */
+janus_logger *create(void) {
+    JANUS_LOG(LOG_WARN, "%s created!\n", JANUS_THREADED_LOGGER_NAME);
+    return &janus_threadedlogger_logger;
+}
+
+/* Initialize the plugin */
+static int janus_threadedlogger_init(const char *server_name, const char *config_path) {
+    if(g_atomic_int_get(&initialized) || !g_atomic_int_get(&stopping)) {
+        JANUS_LOG(LOG_ERR, "Threaded logger already initialized\n");
+        return -1;
+    }
+    JANUS_LOG(LOG_WARN, "Initializing threaded logger plugin\n");
+
+    /* Initialize async queue for log entries */
+    log_queue = g_async_queue_new_full((GDestroyNotify)free_log_entry);
+
+	g_atomic_int_set(&initialized, 1);
+    g_atomic_int_set(&stopping, 0);
+
+    GError *error = NULL;
+    /* Set up log output UDP socket */
+    log_socket = g_socket_new(G_SOCKET_FAMILY_IPV4, G_SOCKET_TYPE_DATAGRAM, 
+        G_SOCKET_PROTOCOL_UDP, &error);
+    if(log_socket != NULL || error != NULL) {
+        JANUS_LOG(LOG_ERR, "Failed to create UDP sender socket: %s\n", error ? error->message : "unknown error");
+        if(error)
+            g_error_free(error);
+        return -1;
+    }
+    JANUS_LOG(LOG_INFO, "UDP send socket created for port %d\n", LOG_UDP_PORT);
+    /* Create target address for log messages */
+    log_address = g_inet_socket_address_new_from_string(LOCALHOST, LOG_UDP_PORT);
+    if(!log_address) {
+        JANUS_LOG(LOG_ERR, "Failed to create log target address\n");
+        janus_threadedlogger_destroy();
+        return -1;
+    }
+
+    /* Start worker threads */
+	logger_thread = g_thread_try_new("io", worker_thread_func, NULL, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the telemetry logger thread...\n",
+			error->code, error->message ? error->message : "?");
+		g_error_free(error);
+        janus_threadedlogger_destroy();
+		return -1;
+	}
+
+    JANUS_LOG(LOG_INFO, "Threaded logger plugin initialized (filter: '%s')\n", LOG_FILTER_PREFIX);
+    return 0;
+}
+
+/* Destroy the plugin */
+static void janus_threadedlogger_destroy(void) {
+	if(!g_atomic_int_get(&initialized))
+		return;
+	g_atomic_int_set(&stopping, 1);
+
+    JANUS_LOG(LOG_WARN, "Destroying telemetry logger plugin\n");
+    
+    /* Wait for threads to finish */
+    if(logger_thread != NULL) {
+		g_thread_join(logger_thread);
+		logger_thread = NULL;
+	}
+    
+    /* Close sockets */
+    if(log_socket != NULL) {
+        g_socket_close(log_socket, NULL);
+        g_object_unref(log_socket);
+        log_socket = NULL;
+    }
+    if(log_address != NULL) {
+        g_object_unref(log_address);
+        log_address = NULL;
+    }
+    /* Cleanup the queue */
+    if (log_queue != NULL) {
+        g_async_queue_unref(log_queue);
+        log_queue = NULL;
+    }
+
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_THREADED_LOGGER_NAME);
+}
+
+int janus_threadedlogger_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_LOGGER_API_VERSION;
+}
+
+int janus_threadedlogger_get_version(void) {
+	return JANUS_THREADED_LOGGER_VERSION;
+}
+
+const char *janus_threadedlogger_get_version_string(void) {
+	return JANUS_THREADED_LOGGER_VERSION_STRING;
+}
+
+const char *janus_threadedlogger_get_description(void) {
+	return JANUS_THREADED_LOGGER_DESCRIPTION;
+}
+
+const char *janus_threadedlogger_get_name(void) {
+	return JANUS_THREADED_LOGGER_NAME;
+}
+
+const char *janus_threadedlogger_get_author(void) {
+	return JANUS_THREADED_LOGGER_AUTHOR;
+}
+
+const char *janus_threadedlogger_get_package(void) {
+	return JANUS_THREADED_LOGGER_PACKAGE;
+}
+
+/* Main handle incoming log lines, called from the main JANUS thread */
+static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char *line) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || line == NULL) {
+		/* Janus is closing or the plugin is */
+		return;
+	}
+
+    /* Apply basic filter - only process messages starting with the filter prefix */
+    if(LOG_FILTER_PREFIX && strlen(LOG_FILTER_PREFIX) > 0) {
+        if(strncmp(line, LOG_FILTER_PREFIX, strlen(LOG_FILTER_PREFIX)) != 0) {
+            /* Message doesn't match filter, skip it */
+            return;
+        }
+    }
+
+    log_entry_t *entry = g_malloc(sizeof(log_entry_t));
+    if(!entry)
+        return;
+    
+    entry->message = g_strdup(line);
+    if(!entry->message) {
+        g_free(entry);
+        return;
+    }
+    entry->seqnum = atomic_fetch_add(&seqnum, 1);
+    entry->timestamp = timestamp;
+
+    // Enqueue it and move on!
+    g_async_queue_push(log_queue, entry);
+}
+
+
+/* Worker thread function - reads queued log messages and writes them on the UDP socket */
+static void *worker_thread_func(void *arg) {
+    JANUS_LOG(LOG_INFO, "Worker thread started\n");
+    
+    while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {        
+        // This blocks this thread until there's data to be read - takes the head of the queue
+        log_entry_t *entry = g_async_queue_pop(log_queue);
+        if (entry) {
+            gchar *msg = entry->message + strlen(LOG_FILTER_PREFIX);
+            gchar *telemetered_msg = g_strdup_printf("%lu|%lu|%s", entry->seqnum, entry->timestamp, msg);
+            
+            /* Send UDP message */
+            GError *error = NULL;
+            gssize ret = g_socket_send_to(log_socket, log_address, telemetered_msg, strlen(telemetered_msg), NULL, &error);
+            if(ret < 0) {
+                if(error) {
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%llu): %s\n", ret, error->message);
+                    g_error_free(error);
+                } else {
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%llu)\n", ret);
+                }
+            }
+            
+            g_free(telemetered_msg);
+            /* entry will be automatically freed by queue's destroy notify */
+        }
+    }
+
+    JANUS_LOG(LOG_INFO, "Worker thread stopped\n");
+    return NULL;
+}
+/* Free log entry - async destructor function for each queue entry when it's popped off */
+static void free_log_entry(log_entry_t *entry) {
+    if(entry) {
+        g_free(entry->message);
+        g_free(entry);
+    }
+}

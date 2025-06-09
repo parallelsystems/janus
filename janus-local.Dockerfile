@@ -56,6 +56,7 @@ RUN ./configure \
     --disable-mqtt \
     --disable-all-plugins \
     --enable-plugin-videoroom \
+    --enable-telem-logger \
     --enable-static
 RUN make && make install && make configs
 
