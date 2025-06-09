@@ -69,7 +69,6 @@ static const char *janus_log_prefix[] = {
 	"",
 	"",
 	"",
-	"",
 /* with colors */
 	"",
 	ANSI_COLOR_MAGENTA "[FATAL]" ANSI_COLOR_RESET " ",
