@@ -17,10 +17,7 @@
 #define JANUS_THREADED_LOGGER_DESCRIPTION	    "This plugin pushes telemetry data to a Parallel Systems Telemetry client over UDP."
 #define JANUS_THREADED_LOGGER_NAME		        "JANUS Telemetry plugin"
 #define JANUS_THREADED_LOGGER_AUTHOR		    "Parallel Systems"
-#define JANUS_THREADED_LOGGER_PACKAGE		    "janus.plugin.threadedlogger"
-
-/* Filter configuration - modify this to change the filter string */
-static const char *LOG_FILTER_PREFIX = "TELEM";
+#define JANUS_THREADED_LOGGER_PACKAGE		    TELEM_PLUGIN_PACKAGE_NAME
 
 /* Socket configuration */
 #define LOCALHOST "127.0.0.1"
@@ -85,7 +82,7 @@ static janus_logger janus_threadedlogger_logger = {
 
 /* Plugin creator */
 janus_logger *create(void) {
-    JANUS_LOG(LOG_WARN, "%s created!\n", JANUS_THREADED_LOGGER_NAME);
+    JANUS_LOG(LOG_INFO, "%s created!\n", JANUS_THREADED_LOGGER_NAME);
     return &janus_threadedlogger_logger;
 }
 
@@ -95,7 +92,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
         JANUS_LOG(LOG_ERR, "Threaded logger already initialized\n");
         return -1;
     }
-    JANUS_LOG(LOG_WARN, "Initializing threaded logger plugin\n");
+    JANUS_LOG(LOG_INFO, "Initializing threaded logger plugin\n");
 
     /* Initialize async queue for log entries */
     log_queue = g_async_queue_new_full((GDestroyNotify)free_log_entry);
@@ -139,7 +136,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 		return -1;
 	}
 
-    JANUS_LOG(LOG_INFO, "Threaded logger plugin initialized (filter: '%s')\n", LOG_FILTER_PREFIX);
+    JANUS_LOG(LOG_INFO, "Threaded logger plugin initialized (filter: '%s')\n", TELEM_LOG_PREFIX);
     return 0;
 }
 
@@ -210,11 +207,9 @@ static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char 
 	}
 
     /* Apply basic filter - only process messages starting with the filter prefix */
-    if(LOG_FILTER_PREFIX && strlen(LOG_FILTER_PREFIX) > 0) {
-        if(strncmp(line, LOG_FILTER_PREFIX, strlen(LOG_FILTER_PREFIX)) != 0) {
-            /* Message doesn't match filter, skip it */
-            return;
-        }
+    if(strncmp(line, TELEM_LOG_PREFIX, strlen(TELEM_LOG_PREFIX)) != 0) {
+        /* Message doesn't match filter, skip it */
+        return;
     }
 
     log_entry_t *entry = g_malloc(sizeof(log_entry_t));
@@ -234,6 +229,11 @@ static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char 
 }
 
 
+// Helper macro to pack a payload; allocates heap memory via glib that must be freed
+#define PACK_TELEMETRY_MSG(seqnum, timestamp, msg) \
+	g_strdup_printf("{\"seqnum\":%lu,\"time\":%lu,\"msg\":\"%s\"}", \
+        (uint64_t)seqnum, (uint64_t)timestamp, (char*)msg)
+
 /* Worker thread function - reads queued log messages and writes them on the UDP socket */
 static void *worker_thread_func(void *arg) {
     JANUS_LOG(LOG_WARN, "Worker thread started\n");
@@ -242,17 +242,20 @@ static void *worker_thread_func(void *arg) {
         // This blocks this thread until there's data to be read - takes the head of the queue.
         // entry will be automatically freed by queue's destroy notify.
         log_entry_t *entry = g_async_queue_pop(log_queue);
-        if (entry) {
-            gchar *msg = entry->message + strlen(LOG_FILTER_PREFIX);
-            gchar *telemetered_msg = g_strdup_printf("%lu|%lu|%s", entry->seqnum, entry->timestamp, msg);
-
-            ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen((char*)telemetered_msg), 0, NULL, sizeof(udp_addr));
-            if(sent < 0) {
-                /* Don't log errors here to avoid potential recursion */
-                JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
+        size_t prefix_len = strlen(TELEM_LOG_PREFIX) + 1;
+        if (entry && (strlen(entry->message) > prefix_len)) {
+            // Index past the prefix
+            gchar *msg = entry->message + prefix_len;
+            gchar *telemetered_msg = PACK_TELEMETRY_MSG(entry->seqnum, entry->timestamp, msg);
+            if (telemetered_msg) {
+                ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen((char*)telemetered_msg), 0, NULL, sizeof(udp_addr));
+                if(sent < 0) {
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
+                }
+                g_free(telemetered_msg);
+            } else {
+                JANUS_LOG(LOG_WARN, "Failed to allocate telemetry messgage\n");
             }
-            
-            g_free(telemetered_msg);
         }
     }
 

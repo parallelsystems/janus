@@ -82,6 +82,9 @@ janus_logger *create(void) {
 
 #include "../utils.h"
 
+/* Prefix for telemetry log filtering */
+#define TELEM_LOG_PREFIX  "TELEM"
+#define TELEM_PLUGIN_PACKAGE_NAME "janus.plugin.threadedlogger"
 
 /*! \brief Version of the API, to match the one logger plugins were compiled against */
 #define JANUS_LOGGER_API_VERSION	3

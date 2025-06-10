@@ -42,6 +42,7 @@ static GHashTable *external_loggers = NULL;
 static volatile gint initialized = 0;
 static gint stopping = 0;
 static gint poolsz = 0;
+static gint telem_loaded = 0;
 static gint maxpoolsz = 32;
 /* Buffers over this size will be freed */
 static size_t maxbuffersz = 8000;
@@ -99,6 +100,7 @@ static janus_log_buffer *janus_log_getbuf(void) {
 
 static void *janus_log_thread(void *ctx) {
 	janus_log_buffer *head, *b, *tofree = NULL;
+	int32_t telem_active = g_atomic_int_get(&telem_loaded);
 
 	while (!g_atomic_int_get(&stopping)) {
 		g_mutex_lock(&lock);
@@ -111,9 +113,10 @@ static void *janus_log_thread(void *ctx) {
 
 		if (head) {
 			for (b = head; b; b = b->next) {
-				if(janus_log_console)
+				int only_telem_log = telem_active && (strncmp(b->str, TELEM_LOG_PREFIX, strlen(TELEM_LOG_PREFIX) == 0));
+				if(janus_log_console && !only_telem_log)
 					fputs(b->str, stdout);
-				if(janus_log_file)
+				if(janus_log_file && !only_telem_log)
 					fputs(b->str, janus_log_file);
 				if(external_loggers != NULL) {
 					GHashTableIter iter;
@@ -150,9 +153,10 @@ static void *janus_log_thread(void *ctx) {
 	}
 	/* print any remaining messages, stdout flushed on exit */
 	for (b = printhead; b; b = b->next) {
-		if(janus_log_console)
+		int only_telem_log = telem_active && (strncmp(b->str, TELEM_LOG_PREFIX, strlen(TELEM_LOG_PREFIX) == 0));
+		if(janus_log_console && !only_telem_log)
 			fputs(b->str, stdout);
-		if(janus_log_file)
+		if(janus_log_file && !only_telem_log)
 			fputs(b->str, janus_log_file);
 		if(external_loggers != NULL) {
 			GHashTableIter iter;
@@ -262,7 +266,18 @@ void janus_log_set_loggers(GHashTable *loggers) {
 	g_mutex_lock(&lock);
 	external_loggers = loggers;
 	if(external_loggers != NULL)
+	{
 		g_print("Adding %d external loggers\n", g_hash_table_size(external_loggers));
+
+		if (g_hash_table_contains(external_loggers, TELEM_PLUGIN_PACKAGE_NAME))
+		{
+			g_print("\tTelemetry enabled (%s)\n", TELEM_PLUGIN_PACKAGE_NAME);
+			g_atomic_int_set(&telem_loaded, 1);
+		} else {
+			g_print("\tTelemetry not enabled\n");
+			g_atomic_int_set(&telem_loaded, 0);
+		}
+	}
 	g_mutex_unlock(&lock);
 }
 
