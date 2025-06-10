@@ -2,7 +2,7 @@
 # Platforms: Has been tested on Mac ARM and Linux x86 + ARM.
 #
 # Build with: docker build --no-cache -t janus -f janus.Dockerfile .
-# Run with: `docker run -p 0.0.0.0:8188:8188 -p 8088:8088 janus` for basic API testing
+# Run with: `docker run -p 0.0.0.0:8188:8188 -p 8088:8088 -p 9090:9090 janus` for basic API testing
 # Run with: `docker run -d --network host janus` on Linux to expose all UDP ports for WebRTC
 FROM public.ecr.aws/docker/library/alpine:3.17.0 as base
 
@@ -77,6 +77,8 @@ COPY janus.jcfg /usr/local/etc/janus/janus.jcfg
 # Expose port explicitly for use by Testcontainers
 EXPOSE 8188
 EXPOSE 8088
+# Expose port for UDP telemetry
+EXPOSE 9090
 
 # Run the server
 # ENTRYPOINT ["/usr/local/bin/janus"]

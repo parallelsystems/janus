@@ -39,6 +39,19 @@
 #include "ip-utils.h"
 #include "events.h"
 
+/* Special logger macro that directly sends specifically-formatted lines to
+	Janus' logging system. These telemetered logs are always logged, regardless
+	of the configured runtime log level of the Janus core.
+ */
+#define JANUS_TELEMETER_LOG(format, ...) \
+do { \
+	char janus_log_ts[64] = ""; \
+	snprintf(janus_log_ts, sizeof(janus_log_ts), "TELEM [%ld] ", janus_get_real_time()); \
+	JANUS_PRINT("%s" format, \
+		janus_log_ts, \
+		##__VA_ARGS__); \
+} while (0)
+
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
 static uint16_t janus_stun_port = 0;
@@ -2678,7 +2691,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 
 				guint16 in_seqnum = ntohs(header->seq_number);
-				JANUS_LOG(LOG_NACK, "[%"SCNu64"] [RECEIVER] Packet %"SCNu16" arrived\n", handle->handle_id, in_seqnum);
+				JANUS_TELEMETER_LOG("%"SCNu64" received %"SCNu16"\n", handle->handle_id, in_seqnum);
 
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
@@ -5284,3 +5297,4 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
 			session->session_id, handle->handle_id, handle->opaque_id, info);
 	}
 }
+

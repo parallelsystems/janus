@@ -4,7 +4,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdatomic.h>
-#include <gio/gio.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include "logger.h"
 #include "../debug.h"
@@ -45,8 +47,8 @@ static GThread *logger_thread = NULL;
 static GAsyncQueue *log_queue = NULL;
 
 /* IO Sockets */
-static GSocket *log_socket = NULL;
-static GSocketAddress *log_address = NULL;
+static int udp_socket = -1;
+static struct sockaddr_in udp_addr;
 
 /* The sequence number seed counter */
 static atomic_uint_fast64_t seqnum = 0;
@@ -102,21 +104,28 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
     g_atomic_int_set(&stopping, 0);
 
     GError *error = NULL;
-    /* Set up log output UDP socket */
-    log_socket = g_socket_new(G_SOCKET_FAMILY_IPV4, G_SOCKET_TYPE_DATAGRAM, 
-        G_SOCKET_PROTOCOL_UDP, &error);
-    if(log_socket != NULL || error != NULL) {
-        JANUS_LOG(LOG_ERR, "Failed to create UDP sender socket: %s\n", error ? error->message : "unknown error");
-        if(error)
-            g_error_free(error);
-        return -1;
-    }
-    JANUS_LOG(LOG_INFO, "UDP send socket created for port %d\n", LOG_UDP_PORT);
-    /* Create target address for log messages */
-    log_address = g_inet_socket_address_new_from_string(LOCALHOST, LOG_UDP_PORT);
-    if(!log_address) {
-        JANUS_LOG(LOG_ERR, "Failed to create log target address\n");
-        janus_threadedlogger_destroy();
+    // /* Set up log output UDP socket */
+    udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
+	if(udp_socket < 0) {
+		JANUS_LOG(LOG_ERR, "Failed to create UDP socket: %s\n", strerror(errno));
+		return -1;
+	}
+
+    memset(&udp_addr, 0, sizeof(udp_addr));
+	udp_addr.sin_family = AF_INET;
+	udp_addr.sin_port = htons(LOG_UDP_PORT);
+	if(inet_aton(LOCALHOST, &udp_addr.sin_addr) == 0) {
+		JANUS_LOG(LOG_ERR, "Invalid UDP host address: %s\n", LOCALHOST);
+		close(udp_socket);
+		udp_socket = -1;
+		return -1;
+	}
+
+    if(connect(udp_socket, (struct sockaddr *)&udp_addr, sizeof(udp_addr)) < 0)
+    {
+        JANUS_LOG(LOG_ERR, "Unable to connect to UDP socket: %s:%d\n", LOCALHOST, LOG_UDP_PORT);
+        close(udp_socket);
+		udp_socket = -1;
         return -1;
     }
 
@@ -147,16 +156,11 @@ static void janus_threadedlogger_destroy(void) {
 		g_thread_join(logger_thread);
 		logger_thread = NULL;
 	}
-    
-    /* Close sockets */
-    if(log_socket != NULL) {
-        g_socket_close(log_socket, NULL);
-        g_object_unref(log_socket);
-        log_socket = NULL;
-    }
-    if(log_address != NULL) {
-        g_object_unref(log_address);
-        log_address = NULL;
+
+    /* Close socket */
+    if (udp_socket >= 0) {
+        close(udp_socket);
+        udp_socket = -1;
     }
     /* Cleanup the queue */
     if (log_queue != NULL) {
@@ -232,29 +236,23 @@ static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char 
 
 /* Worker thread function - reads queued log messages and writes them on the UDP socket */
 static void *worker_thread_func(void *arg) {
-    JANUS_LOG(LOG_INFO, "Worker thread started\n");
+    JANUS_LOG(LOG_WARN, "Worker thread started\n");
     
     while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {        
-        // This blocks this thread until there's data to be read - takes the head of the queue
+        // This blocks this thread until there's data to be read - takes the head of the queue.
+        // entry will be automatically freed by queue's destroy notify.
         log_entry_t *entry = g_async_queue_pop(log_queue);
         if (entry) {
             gchar *msg = entry->message + strlen(LOG_FILTER_PREFIX);
             gchar *telemetered_msg = g_strdup_printf("%lu|%lu|%s", entry->seqnum, entry->timestamp, msg);
-            
-            /* Send UDP message */
-            GError *error = NULL;
-            gssize ret = g_socket_send_to(log_socket, log_address, telemetered_msg, strlen(telemetered_msg), NULL, &error);
-            if(ret < 0) {
-                if(error) {
-                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%lld): %s\n", ret, error->message);
-                    g_error_free(error);
-                } else {
-                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message (%lld)\n", ret);
-                }
+
+            ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen((char*)telemetered_msg), 0, NULL, sizeof(udp_addr));
+            if(sent < 0) {
+                /* Don't log errors here to avoid potential recursion */
+                JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
             }
             
             g_free(telemetered_msg);
-            /* entry will be automatically freed by queue's destroy notify */
         }
     }
 
@@ -264,7 +262,8 @@ static void *worker_thread_func(void *arg) {
 /* Free log entry - async destructor function for each queue entry when it's popped off */
 static void free_log_entry(log_entry_t *entry) {
     if(entry) {
-        g_free(entry->message);
+        if (entry->message)
+            g_free(entry->message);
         g_free(entry);
     }
 }
