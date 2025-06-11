@@ -3328,11 +3328,13 @@ telemeter_packet:
 void janus_telemeter_recv_rtp_packet(janus_ice_recv_rtp_packet_telem *pkt_telem) {
 	if (pkt_telem) {
 		JANUS_TELEMETER_LOG(\
-			"{\"event\":\"pkt\",\"session\":%lu,\"handle\": %lu,\"seqnum\": %u,\"size\": %lu,\"rtx\": %u,\"dup\": %d,\"nacks\": %d,\"keyframe\": %d}",
-			pkt_telem->session, pkt_telem->handle,
-			pkt_telem->rtp_seqnum, pkt_telem->rtp_size,
-			pkt_telem->is_rtx_pkt, pkt_telem->is_duplicate,
-			pkt_telem->nack_count, pkt_telem->is_keyframe
+			"{\"event\":\"pkt\",\"session\":%lu,\"handle\": %lu,\"seqnum\": %u,\"size\": %lu,\"rtx\": %s,\"dup\": %s,\"nacks\": %d,\"keyframe\": %s}",
+			pkt_telem->session, pkt_telem->handle, pkt_telem->rtp_seqnum,
+			pkt_telem->rtp_size,
+			pkt_telem->is_rtx_pkt == 1 ? "true" : "false",
+			pkt_telem->is_duplicate == 1 ? "true" : "false",
+			pkt_telem->nack_count,
+			pkt_telem->is_keyframe == 1 ? "true" : "false"
 		);
 	}
 }
