@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "telem.h"
 #include "utils.h"
 #include "loggers/logger.h"
 

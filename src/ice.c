@@ -38,19 +38,7 @@
 #include "apierror.h"
 #include "ip-utils.h"
 #include "events.h"
-
-/* Special logger macro that directly sends specifically-formatted lines to
-	Janus' logging system. These telemetered logs are always logged, regardless
-	of the configured runtime log level of the Janus core.
- */
-#define JANUS_TELEMETER_LOG(format, ...) \
-do { \
-	char janus_log_ts[64] = ""; \
-	snprintf(janus_log_ts, sizeof(janus_log_ts), "%s", TELEM_LOG_PREFIX); \
-	JANUS_PRINT("%s" format, \
-		janus_log_ts, \
-		##__VA_ARGS__); \
-} while (0)
+#include "telem.h"
 
 #define TELEMETER_GENERAL_PACKET(session, handle, seqnum, is_rtx, is_duplicate, nack_cnt, is_keyframe) \
 	JANUS_TELEMETER_LOG(\

@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 
 #include "logger.h"
-#include "../debug.h"
+#include "../telem.h"
 
 /* Plugin information */
 #define JANUS_THREADED_LOGGER_VERSION		    1
