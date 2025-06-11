@@ -231,7 +231,7 @@ static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char 
 
 // Helper macro to pack a payload; allocates heap memory via glib that must be freed
 #define PACK_TELEMETRY_MSG(seqnum, timestamp, msg) \
-	g_strdup_printf("{\"seqnum\":%lu,\"time\":%lu,\"msg\":\"%s\"}", \
+	g_strdup_printf("{\"seqnum\":%lu,\"time\":%lu,\"msg\":{%s}", \
         (uint64_t)seqnum, (uint64_t)timestamp, (char*)msg)
 
 /* Worker thread function - reads queued log messages and writes them on the UDP socket */
