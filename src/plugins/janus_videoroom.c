@@ -1506,6 +1506,7 @@ room-<unique room ID>: {
 #include <jansson.h>
 #include <netdb.h>
 
+#include "../telem.h"
 #include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
@@ -2362,6 +2363,27 @@ static void janus_videoroom_remote_recipient_free(janus_videoroom_remote_recipie
 		g_free(r->host);
 		g_free(r);
 	}
+}
+
+/*
+	Stub struct re-definition for the gateway handle.
+	The full `janus_ice_handle` is defined in `../ice.h`, but by design the plugin layer
+	cannot link with the "parent" gateway core layer.
+	The gateway passes in an opaque pointer to this handle in `janus_videoroom_create_session` as
+	`handle->gateway_handle`.
+	We are interested in the `handle_id`, so we need an ability to cast into this (known type) from the void *.
+*/
+typedef struct janus_gateway_handle_stub {
+	/*! \brief Opaque pointer to the core/peer session - ignored */
+	void *session;
+	/*! \brief Handle identifier in the Janus Core, guaranteed to be non-zero */
+	guint64 handle_id;
+} janus_gateway_handle_stub;
+static guint64 janus_gateway_handle_id_from_plugin_handle(janus_plugin_session* plugin_h) {
+	if (plugin_h && plugin_h->gateway_handle)
+		return ((janus_gateway_handle_stub*)plugin_h->gateway_handle)->handle_id;
+	else
+		return 0;
 }
 
 /* Start / stop recording */
@@ -4051,6 +4073,12 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_videoroom_session_free);
 
+	guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(handle);
+	if (gateway_handle_id)
+		JANUS_TELEMETER_LOG("{\"event\":\"vr_session_created\",\"handle\": %lu}", gateway_handle_id);
+	else
+		JANUS_LOG(LOG_WARN, "Unable to telemeter session creation event!");
+
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
 	janus_mutex_unlock(&sessions_mutex);
@@ -4314,6 +4342,13 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		JANUS_LOG(LOG_WARN, "VideoRoom session already marked as destroyed...\n");
 		return;
 	}
+
+	guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(handle);
+	if (gateway_handle_id)
+		JANUS_TELEMETER_LOG("{\"event\":\"vr_session_destroyed\",\"handle\": %lu}", gateway_handle_id);
+	else
+		JANUS_LOG(LOG_WARN, "Unable to telemeter session destroyed event!");
+
 	janus_refcount_increase(&session->ref);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
@@ -8068,6 +8103,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	json_t *request = json_object_get(root, "request");
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
+
 	/* We have a separate method to process synchronous requests, as those may
 	 * arrive from the Admin API as well, and so we handle them the same way */
 	response = janus_videoroom_process_synchronous_request(session, root);
@@ -8198,6 +8234,14 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			}
 			janus_mutex_unlock(&participant->rec_mutex);
 			janus_refcount_decrease(&participant->ref);
+
+			guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(session->handle);
+			if (gateway_handle_id)
+				JANUS_TELEMETER_LOG("{\"event\":\"vr_publisher_active\",\"handle\": %lu, \"publisher\": \"%s\", \"room\": \"%s\"}",
+					gateway_handle_id, participant->display, participant->room->room_name);
+			else
+				JANUS_LOG(LOG_WARN, "Unable to telemeter active publisher event!");
+
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = janus_videoroom_session_get_subscriber(session);
 			if(s && s->streams) {
@@ -8497,39 +8541,38 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		g_slist_foreach(ps->subscribers, janus_videoroom_relay_rtp_packet, &packet);
 		janus_mutex_unlock_nodebug(&ps->subscribers_mutex);
 
-		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
-		if(video && ps->active && !ps->muted) {
-			/* Did we send a REMB already, or is it time to send one? */
-			gboolean send_remb = FALSE;
-			if(participant->remb_latest == 0 && participant->remb_startup > 0) {
-				/* Still in the starting phase, send the ramp-up REMB feedback */
-				send_remb = TRUE;
-			} else if(participant->remb_latest > 0 && janus_get_monotonic_time()-participant->remb_latest >= 5*G_USEC_PER_SEC) {
-				/* 5 seconds have passed since the last REMB, send a new one */
-				send_remb = TRUE;
-			}
+		if(video) {
+			/* Check if we need to send any REMB, FIR or PLI back to this publisher */
+			if (ps->active && !ps->muted) {
+				/* Did we send a REMB already, or is it time to send one? */
+				gboolean send_remb = FALSE;
+				if(participant->remb_latest == 0 && participant->remb_startup > 0) {
+					/* Still in the starting phase, send the ramp-up REMB feedback */
+					send_remb = TRUE;
+				} else if(participant->remb_latest > 0 && janus_get_monotonic_time()-participant->remb_latest >= 5*G_USEC_PER_SEC) {
+					/* 5 seconds have passed since the last REMB, send a new one */
+					send_remb = TRUE;
+				}
 
-			if(send_remb && participant->bitrate) {
-				/* We send a few incremental REMB messages at startup */
-				uint32_t bitrate = participant->bitrate;
-				if(participant->remb_startup > 0) {
-					bitrate = bitrate/participant->remb_startup;
-					participant->remb_startup--;
+				if(send_remb && participant->bitrate) {
+					/* We send a few incremental REMB messages at startup */
+					uint32_t bitrate = participant->bitrate;
+					if(participant->remb_startup > 0) {
+						bitrate = bitrate/participant->remb_startup;
+						participant->remb_startup--;
+					}
+					JANUS_LOG(LOG_VERB, "Sending REMB (%s, %"SCNu32")\n", participant->display, bitrate);
+					if(!participant->remote) {
+						gateway->send_remb(session->handle, bitrate);
+					} else {
+						/* TODO Forward back to the remote publisher */
+					}
+					if(participant->remb_startup == 0)
+						participant->remb_latest = janus_get_monotonic_time();
 				}
-				JANUS_LOG(LOG_VERB, "Sending REMB (%s, %"SCNu32")\n", participant->display, bitrate);
-				if(!participant->remote) {
-					gateway->send_remb(session->handle, bitrate);
-				} else {
-					/* TODO Forward back to the remote publisher */
-				}
-				if(participant->remb_startup == 0)
-					participant->remb_latest = janus_get_monotonic_time();
-			}
-			/* Generate FIR/PLI too, if needed */
-			if(video && ps->active && !ps->muted && (videoroom->fir_freq > 0)) {
-				/* We generate RTCP every tot seconds/frames */
-				gint64 now = janus_get_monotonic_time();
-				/* First check if this is a keyframe, though: if so, we reset the timer */
+
+				/* First check if this is a keyframe */
+				int is_keyframe = 0;
 				int plen = 0;
 				char *payload = janus_rtp_payload(buf, len, &plen);
 				if(payload == NULL) {
@@ -8538,23 +8581,45 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 				}
 				if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
 					if(janus_vp8_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+						is_keyframe = 1;
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_VP9) {
 					if(janus_vp9_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+						is_keyframe = 1;
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_H264) {
 					if(janus_h264_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+						is_keyframe = 1;
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_AV1) {
 					if(janus_av1_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+						is_keyframe = 1;
 				} else if(ps->vcodec == JANUS_VIDEOCODEC_H265) {
 					if(janus_h265_is_keyframe(payload, plen))
-						ps->fir_latest = now;
+						is_keyframe = 1;
 				}
-				if((now-ps->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
-					/* FIXME We send a FIR every tot seconds */
-					janus_videoroom_reqpli(ps, "Regular keyframe request");
+
+				/* Generate FIR/PLI too, if needed: if so, we reset the timer */
+				gint64 now = janus_get_monotonic_time();
+				if(!is_keyframe && (videoroom->fir_freq > 0)) {
+					/* Not a keyframe - is it time to send FIR/PLI? */
+					if((now-ps->fir_latest) >= ((gint64)videoroom->fir_freq*G_USEC_PER_SEC)) {
+						janus_videoroom_reqpli(ps, "Regular keyframe request");
+
+						guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(session->handle);
+						if (gateway_handle_id)
+							JANUS_TELEMETER_LOG("{\"event\":\"vr_publisher_pli\",\"handle\": %lu, \"publisher\": \"%s\", \"room\": \"%s\"}",
+								gateway_handle_id, participant->display, participant->room->room_name);
+						else
+							JANUS_LOG(LOG_WARN, "Unable to telemeter publisher PLI event!");
+					}
+				} else if (is_keyframe) {
+					/* Reset the timer */
+					ps->fir_latest = now;
+
+					guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(session->handle);
+					if (gateway_handle_id)
+						JANUS_TELEMETER_LOG("{\"event\":\"vr_publisher_keyframe\",\"handle\": %lu, \"publisher\": \"%s\", \"room\": \"%s\"}",
+							gateway_handle_id, participant->display, participant->room->room_name);
+					else
+						JANUS_LOG(LOG_WARN, "Unable to telemeter publisher keyframe event!");
 				}
 			}
 		}
@@ -8890,6 +8955,14 @@ static void janus_videoroom_hangup_media_internal(gpointer session_data) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+
+		guint64 gateway_handle_id = janus_gateway_handle_id_from_plugin_handle(session->handle);
+		if (gateway_handle_id)
+			JANUS_TELEMETER_LOG("{\"event\":\"vr_publisher_hangup\",\"handle\": %lu, \"publisher\": \"%s\", \"room\": \"%s\"}",
+				gateway_handle_id, participant->display, participant->room->room_name);
+		else
+			JANUS_LOG(LOG_WARN, "Unable to telemeter publisher hangup event!");
+
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
 		g_free(participant->recording_base);

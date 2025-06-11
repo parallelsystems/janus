@@ -40,27 +40,12 @@
 #include "events.h"
 #include "telem.h"
 
-#define TELEMETER_GENERAL_PACKET(session, handle, seqnum, is_rtx, is_duplicate, nack_cnt, is_keyframe) \
-	JANUS_TELEMETER_LOG(\
-		"{\
-			\"event\":\"pkt\",\
-			\"session\":%lu,\
-			\"handle\": %lu,\
-			\"seqnum\": %u,\
-			\"rtx\": %u,\
-			\"dup\": %d,\
-			\"nacks\": %d,\
-			\"keyframe\": %d\
-		}",\
-		(uint64_t)(session), (uint64_t)(handle), (uint16_t)(seqnum),\
-		(uint32_t)(is_rtx),\
-		(int8_t)(is_duplicate), (int8_t)(nack_cnt), (int32_t)(is_keyframe),\
-	)
 
 typedef struct janus_ice_recv_rtp_packet_telem {
 	uint64_t session;
 	uint64_t handle;
 	uint16_t rtp_seqnum;
+	uint64_t rtp_size;
 	uint8_t is_rtx_pkt;
 	int8_t is_duplicate;  // -1: unknown
 	int8_t nack_count; // -1: unknown
@@ -2711,6 +2696,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				packet_telem.session = session->session_id;
 				packet_telem.handle = handle->handle_id;
 				packet_telem.rtp_seqnum = ntohs(header->seq_number);
+				packet_telem.rtp_size = buflen;
 				packet_telem.is_rtx_pkt = rtx;
 				packet_telem.is_keyframe = -1;
 				packet_telem.nack_count = -1;
@@ -3342,11 +3328,11 @@ telemeter_packet:
 void janus_telemeter_recv_rtp_packet(janus_ice_recv_rtp_packet_telem *pkt_telem) {
 	if (pkt_telem) {
 		JANUS_TELEMETER_LOG(\
-			"{\"event\":\"pkt\",\"session\":%lu,\"handle\": %lu,\"seqnum\": %u,\"rtx\": %u,\"dup\": %d,\"nacks\": %d,\"keyframe\": %d}",
+			"{\"event\":\"pkt\",\"session\":%lu,\"handle\": %lu,\"seqnum\": %u,\"size\": %lu,\"rtx\": %u,\"dup\": %d,\"nacks\": %d,\"keyframe\": %d}",
 			pkt_telem->session, pkt_telem->handle,
-			pkt_telem->rtp_seqnum, pkt_telem->is_rtx_pkt,
-			pkt_telem->is_duplicate, pkt_telem->nack_count,
-			pkt_telem->is_keyframe
+			pkt_telem->rtp_seqnum, pkt_telem->rtp_size,
+			pkt_telem->is_rtx_pkt, pkt_telem->is_duplicate,
+			pkt_telem->nack_count, pkt_telem->is_keyframe
 		);
 	}
 }
