@@ -10,6 +10,7 @@
 
 #include "logger.h"
 #include "../telem.h"
+#include "../config.h"
 
 /* Plugin information */
 #define JANUS_THREADED_LOGGER_VERSION		    1
@@ -94,6 +95,58 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
     }
     JANUS_LOG(LOG_INFO, "Initializing telemetry logger plugin\n");
 
+    char udp_address[64];
+    snprintf(udp_address, 64, "%s", LOCALHOST);
+    uint16_t udp_port = LOG_UDP_PORT;
+
+    if(config_path == NULL) {
+		/* Invalid arguments */
+		return -1;
+	}
+
+	/* Read configuration file */
+	gboolean enabled = FALSE;
+	char filename[255];
+	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_THREADED_LOGGER_PACKAGE);
+	JANUS_LOG(LOG_VERB, "Checking configuration file: %s\n", filename);
+
+	janus_config *config = janus_config_parse(filename);
+	if(config == NULL) {
+		JANUS_LOG(LOG_WARN, "Couldn't find .jcfg configuration file (%s), trying .cfg\n", JANUS_THREADED_LOGGER_PACKAGE);
+		g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_THREADED_LOGGER_PACKAGE);
+		JANUS_LOG(LOG_VERB, "Checking configuration file: %s\n", filename);
+		config = janus_config_parse(filename);
+	}
+
+	if(config != NULL) {
+		/* Handle configuration */
+		janus_config_print(config);
+		janus_config_category *config_general = janus_config_get_create(config, NULL, janus_config_type_category, "general");
+        if (config_general) {
+            janus_config_item *item = janus_config_get(config, config_general, janus_config_type_item, "udp_address");
+            if(!item || !item->value) {
+                JANUS_LOG(LOG_WARN, "No UDP Address in telem config - using default [%s]\n", udp_address);
+            } else {
+                snprintf(udp_address, 64, "%s", item->value);
+                JANUS_LOG(LOG_INFO, "Telemetry configured to UDP Address [%s]\n", udp_address);
+            }
+
+            item = janus_config_get(config, config_general, janus_config_type_item, "udp_port");
+            if(!item || !item->value) {
+                JANUS_LOG(LOG_WARN, "No UDP Port in telem config - using default [%d]\n", udp_port);
+            } else {
+                udp_port = atoi(item->value);
+                JANUS_LOG(LOG_INFO, "Telemetry configured to UDP Port [%d]\n", udp_port);
+            }
+        } else {
+            JANUS_LOG(LOG_WARN, "Unable to configure telemetry logger from file [%s] - missing 'general' blob\n", filename);
+        }
+	}
+	janus_config_destroy(config);
+	config = NULL;
+
+    JANUS_LOG(LOG_INFO, "\tTelemetry Logger will stream data to %s:%d\n", udp_address, udp_port);
+
     /* Initialize async queue for log entries */
     log_queue = g_async_queue_new_full((GDestroyNotify)free_log_entry);
 
@@ -110,9 +163,9 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 
     memset(&udp_addr, 0, sizeof(udp_addr));
 	udp_addr.sin_family = AF_INET;
-	udp_addr.sin_port = htons(LOG_UDP_PORT);
-	if(inet_aton(LOCALHOST, &udp_addr.sin_addr) == 0) {
-		JANUS_LOG(LOG_ERR, "Invalid UDP host address: %s\n", LOCALHOST);
+	udp_addr.sin_port = htons(udp_port);
+	if(inet_aton(udp_address, &udp_addr.sin_addr) == 0) {
+		JANUS_LOG(LOG_ERR, "Invalid UDP host address: %s\n", udp_address);
 		close(udp_socket);
 		udp_socket = -1;
 		return -1;
@@ -120,7 +173,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 
     if(connect(udp_socket, (struct sockaddr *)&udp_addr, sizeof(udp_addr)) < 0)
     {
-        JANUS_LOG(LOG_ERR, "Unable to connect to UDP socket: %s:%d\n", LOCALHOST, LOG_UDP_PORT);
+        JANUS_LOG(LOG_ERR, "Unable to connect to UDP socket: %s:%d\n", udp_address, udp_port);
         close(udp_socket);
 		udp_socket = -1;
         return -1;

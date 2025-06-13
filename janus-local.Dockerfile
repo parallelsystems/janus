@@ -73,6 +73,8 @@ RUN echo "general: {}" > /usr/local/etc/janus/janus.plugin.videoroom.jcfg
 
 # Setup the broader janus config
 COPY janus.jcfg /usr/local/etc/janus/janus.jcfg
+# Setup the telemetry log stream
+COPY janus.plugin.telem_logger.jcfg /usr/local/etc/janus/janus.plugin.telem_logger.jcfg
 
 # Expose port explicitly for use by Testcontainers
 EXPOSE 8188
