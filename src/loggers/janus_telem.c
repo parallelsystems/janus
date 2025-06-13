@@ -14,8 +14,8 @@
 /* Plugin information */
 #define JANUS_THREADED_LOGGER_VERSION		    1
 #define JANUS_THREADED_LOGGER_VERSION_STRING	"0.0.1"
-#define JANUS_THREADED_LOGGER_DESCRIPTION	    "This plugin pushes telemetry data to a Parallel Systems Telemetry client over UDP."
-#define JANUS_THREADED_LOGGER_NAME		        "JANUS Telemetry plugin"
+#define JANUS_THREADED_LOGGER_DESCRIPTION	    "This plugin pushes streams of telemetry data to a Parallel Systems Telemetry client over UDP."
+#define JANUS_THREADED_LOGGER_NAME		        "JANUS Telemetry streaming plugin"
 #define JANUS_THREADED_LOGGER_AUTHOR		    "Parallel Systems"
 #define JANUS_THREADED_LOGGER_PACKAGE		    TELEM_PLUGIN_PACKAGE_NAME
 
@@ -89,10 +89,10 @@ janus_logger *create(void) {
 /* Initialize the plugin */
 static int janus_threadedlogger_init(const char *server_name, const char *config_path) {
     if(g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping)) {
-        JANUS_LOG(LOG_ERR, "Threaded logger already initialized\n");
+        JANUS_LOG(LOG_ERR, "Telemetry logger already initialized\n");
         return -1;
     }
-    JANUS_LOG(LOG_INFO, "Initializing threaded logger plugin\n");
+    JANUS_LOG(LOG_INFO, "Initializing telemetry logger plugin\n");
 
     /* Initialize async queue for log entries */
     log_queue = g_async_queue_new_full((GDestroyNotify)free_log_entry);
@@ -136,7 +136,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 		return -1;
 	}
 
-    JANUS_LOG(LOG_INFO, "Threaded logger plugin initialized (filter: '%s')\n", TELEM_LOG_PREFIX);
+    JANUS_LOG(LOG_INFO, "Telemetry logger plugin initialized (filter: '%s')\n", TELEM_LOG_PREFIX);
     return 0;
 }
 
@@ -254,7 +254,7 @@ static void *worker_thread_func(void *arg) {
                 }
                 g_free(telemetered_msg);
             } else {
-                JANUS_LOG(LOG_WARN, "Failed to allocate telemetry messgage\n");
+                JANUS_LOG(LOG_WARN, "Failed to allocate telemetry message\n");
             }
         }
     }
