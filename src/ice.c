@@ -38,6 +38,20 @@
 #include "apierror.h"
 #include "ip-utils.h"
 #include "events.h"
+#include "telem.h"
+
+
+typedef struct janus_ice_recv_rtp_packet_telem {
+	uint64_t session;
+	uint64_t handle;
+	uint16_t rtp_seqnum;
+	uint64_t rtp_size;
+	uint8_t is_rtx_pkt;
+	int8_t is_duplicate;  // -1: unknown
+	int8_t nack_count; // -1: unknown
+	int32_t is_keyframe; // -1: unknown
+} janus_ice_recv_rtp_packet_telem;
+void janus_telemeter_recv_rtp_packet(janus_ice_recv_rtp_packet_telem *pkt_telem);
 
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
@@ -2677,8 +2691,16 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error accessing the RTP payload len=%d\n", handle->handle_id, buflen);
 				}
 
-				guint16 in_seqnum = ntohs(header->seq_number);
-				JANUS_LOG(LOG_NACK, "[%"SCNu64"] [RECEIVER] Packet %"SCNu16" arrived\n", handle->handle_id, in_seqnum);
+				// Gather data about this packet to telemeter
+				janus_ice_recv_rtp_packet_telem packet_telem;
+				packet_telem.session = session->session_id;
+				packet_telem.handle = handle->handle_id;
+				packet_telem.rtp_seqnum = ntohs(header->seq_number);
+				packet_telem.rtp_size = buflen;
+				packet_telem.is_rtx_pkt = rtx;
+				packet_telem.is_keyframe = -1;
+				packet_telem.nack_count = -1;
+				packet_telem.is_duplicate = -1;
 
 				if(rtx) {
 					/* The original sequence number is in the first two bytes of the payload */
@@ -2703,7 +2725,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						osn_seqnum = ntohs(header->seq_number);
 					}
 					JANUS_LOG(LOG_NACK, "[%"SCNu64"] Mapped NSN %"SCNu16" to OSN %"SCNu16" (SSRC %"SCNu32")...\n",
-						handle->handle_id, in_seqnum, osn_seqnum, header->ssrc);
+						handle->handle_id, packet_telem.rtp_seqnum, osn_seqnum, header->ssrc);
+
+					// Update the sequence number to the original seqnum
+					packet_telem.rtp_seqnum = osn_seqnum;
 				}
 
 				/* Check if we need to handle transport wide cc */
@@ -2735,18 +2760,21 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 				}
 
+				int is_duplicate_packet = 0;
 				if(medium->do_nacks) {
 					/* Check if this packet is a duplicate: can happen with RFC4588 */
 					guint16 seqno = ntohs(header->seq_number);
 					int nack_state = medium->rtx_nacked[vindex] ?
 						GPOINTER_TO_INT(g_hash_table_lookup(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno))) :
 						SEQ_MISSING;
-					
+					packet_telem.nack_count = nack_state;
+
 					// Nacks up to 6 times
 					if ( nack_state >= SEQ_NACKED && nack_state <= SEQ_GIVEUP ) {
 						JANUS_LOG(LOG_NACK, "[%"SCNu64"] +++ Received NACKed packet %"SCNu16" (NACK'd %"SCNu32" time(s)) (SSRC %"SCNu32")\n",
 							handle->handle_id, seqno, nack_state, packet_ssrc);
 						g_hash_table_insert(medium->rtx_nacked[vindex], GUINT_TO_POINTER(seqno), GUINT_TO_POINTER(SEQ_RECVED)); // Store it as received!
+						packet_telem.is_duplicate = 0;
 					} else if ( rtx && nack_state == SEQ_MISSING ) {
 						/* We received a retransmission for a packet we didn't NACK: drop it
 						 * FIXME This seems to happen with Chrome when RFC4588 is enabled: in that case,
@@ -2756,12 +2784,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						 * Rather than dropping, we should add a better check in the future */
 						JANUS_LOG(LOG_NACK, "[%"SCNu64"] ! Got a retransmission for non-NACKed packet %"SCNu16" (SSRC %"SCNu32", vindex %d)...\n",
 							handle->handle_id, seqno, packet_ssrc, vindex);
+						packet_telem.is_duplicate = 1;
 						return;
 					} else if ( nack_state == SEQ_RECVED ) {
 						JANUS_LOG(LOG_NACK, "[%"SCNu64"] !!! Received duplicate NACK'd packet %"SCNu16" (SSRC %"SCNu32")...\n",
 							handle->handle_id, seqno, packet_ssrc);
-						// Don't pass it down if we've already received it
-						return;
+						packet_telem.is_duplicate = 1;
+						is_duplicate_packet = 1;
+						goto telemeter_packet;
 					}
 				}
 
@@ -2803,6 +2833,18 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							medium->video_is_keyframe = &janus_h265_is_keyframe;
 					}
 				}
+
+				/* Check if this is a keyframe */
+				if(video && medium->video_is_keyframe) {
+					packet_telem.is_keyframe = medium->video_is_keyframe(payload, plen);
+				}
+
+				/* Telemeter data about this packet */
+telemeter_packet:
+				janus_telemeter_recv_rtp_packet(&packet_telem);
+				// Don't pass it down if we've already received it
+				if (is_duplicate_packet)
+					return;
 
 				/* Prepare the data to pass to the responsible plugin */
 				janus_plugin_rtp rtp = { .mindex = medium->mindex, .video = video, .buffer = buf, .length = buflen };
@@ -3280,6 +3322,20 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			pc->dtls_in_stats.info[0].bytes += len;
 		}
 		return;
+	}
+}
+
+void janus_telemeter_recv_rtp_packet(janus_ice_recv_rtp_packet_telem *pkt_telem) {
+	if (pkt_telem) {
+		JANUS_TELEMETER_LOG(\
+			"{\"event\":\"pkt\",\"session\":%lu,\"handle\": %lu,\"seqnum\": %u,\"size\": %lu,\"rtx\": %s,\"dup\": %s,\"nacks\": %d,\"keyframe\": %s}",
+			pkt_telem->session, pkt_telem->handle, pkt_telem->rtp_seqnum,
+			pkt_telem->rtp_size,
+			pkt_telem->is_rtx_pkt == 1 ? "true" : "false",
+			pkt_telem->is_duplicate == 1 ? "true" : "false",
+			pkt_telem->nack_count,
+			pkt_telem->is_keyframe == 1 ? "true" : "false"
+		);
 	}
 }
 
@@ -5284,3 +5340,4 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle) {
 			session->session_id, handle->handle_id, handle->opaque_id, info);
 	}
 }
+

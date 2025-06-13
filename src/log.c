@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "telem.h"
 #include "utils.h"
 #include "loggers/logger.h"
 
@@ -111,9 +112,10 @@ static void *janus_log_thread(void *ctx) {
 
 		if (head) {
 			for (b = head; b; b = b->next) {
-				if(janus_log_console)
+				int telem_only = !strncmp(b->str, TELEM_LOG_PREFIX, strlen(TELEM_LOG_PREFIX));
+				if(janus_log_console && !telem_only)
 					fputs(b->str, stdout);
-				if(janus_log_file)
+				if(janus_log_file && !telem_only)
 					fputs(b->str, janus_log_file);
 				if(external_loggers != NULL) {
 					GHashTableIter iter;
@@ -150,9 +152,10 @@ static void *janus_log_thread(void *ctx) {
 	}
 	/* print any remaining messages, stdout flushed on exit */
 	for (b = printhead; b; b = b->next) {
-		if(janus_log_console)
+		int telem_only = !strncmp(b->str, TELEM_LOG_PREFIX, strlen(TELEM_LOG_PREFIX));
+		if(janus_log_console && !telem_only)
 			fputs(b->str, stdout);
-		if(janus_log_file)
+		if(janus_log_file && !telem_only)
 			fputs(b->str, janus_log_file);
 		if(external_loggers != NULL) {
 			GHashTableIter iter;
@@ -262,7 +265,13 @@ void janus_log_set_loggers(GHashTable *loggers) {
 	g_mutex_lock(&lock);
 	external_loggers = loggers;
 	if(external_loggers != NULL)
+	{
 		g_print("Adding %d external loggers\n", g_hash_table_size(external_loggers));
+		if (g_hash_table_contains(external_loggers, TELEM_PLUGIN_PACKAGE_NAME))
+			g_print("\tTelemetry enabled (%s)\n", TELEM_PLUGIN_PACKAGE_NAME);
+		else
+			g_print("\tTelemetry not enabled\n");
+	}
 	g_mutex_unlock(&lock);
 }
 

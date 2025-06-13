@@ -82,7 +82,6 @@ janus_logger *create(void) {
 
 #include "../utils.h"
 
-
 /*! \brief Version of the API, to match the one logger plugins were compiled against */
 #define JANUS_LOGGER_API_VERSION	3
 

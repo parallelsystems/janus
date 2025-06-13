@@ -4,7 +4,7 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
+header_HEADERS = apierror.h config.h log.h debug.h mutex.h telem.h record.h \
 	rtcp.h rtp.h rtpsrtp.h sdp-utils.h ip-utils.h utils.h refcount.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
@@ -114,6 +114,7 @@ janus_SOURCES = \
 	version.h \
 	text2pcap.c \
 	text2pcap.h \
+	telem.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
@@ -373,6 +374,14 @@ loggers_libjanus_jsonlog_la_LDFLAGS = $(loggers_ldflags)
 loggers_libjanus_jsonlog_la_LIBADD = $(loggers_libadd)
 conf_DATA += ../conf/janus.logger.jsonlog.jcfg.sample
 EXTRA_DIST += ../conf/janus.logger.jsonlog.jcfg.sample
+endif
+
+if ENABLE_TELEMLOGGER
+logger_LTLIBRARIES += loggers/libjanus_telem.la
+loggers_libjanus_telem_la_SOURCES = loggers/janus_telem.c
+loggers_libjanus_telem_la_CFLAGS = $(loggers_cflags)
+loggers_libjanus_telem_la_LDFLAGS = $(loggers_ldflags)
+loggers_libjanus_telem_la_LIBADD = $(loggers_libadd)
 endif
 
 ##
