@@ -80,7 +80,7 @@ COPY janus.plugin.telem_logger.jcfg /usr/local/etc/janus/janus.plugin.telem_logg
 EXPOSE 8188
 EXPOSE 8088
 # Expose port for UDP telemetry
-EXPOSE 9090
+EXPOSE 9090/udp
 
 # Run the server
 # ENTRYPOINT ["/usr/local/bin/janus"]

@@ -47,6 +47,7 @@ static GAsyncQueue *log_queue = NULL;
 /* IO Sockets */
 static int udp_socket = -1;
 static struct sockaddr_in udp_addr;
+static ssize_t udp_addr_size = sizeof(udp_addr);
 
 /* The sequence number seed counter */
 static atomic_uint_fast64_t seqnum = 0;
@@ -105,7 +106,6 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 	}
 
 	/* Read configuration file */
-	gboolean enabled = FALSE;
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.jcfg", config_path, JANUS_THREADED_LOGGER_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Checking configuration file: %s\n", filename);
@@ -161,22 +161,15 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 		return -1;
 	}
 
+    // Just setup the server socket address
     memset(&udp_addr, 0, sizeof(udp_addr));
 	udp_addr.sin_family = AF_INET;
 	udp_addr.sin_port = htons(udp_port);
-	if(inet_aton(udp_address, &udp_addr.sin_addr) == 0) {
-		JANUS_LOG(LOG_ERR, "Invalid UDP host address: %s\n", udp_address);
+    if (inet_pton(AF_INET, udp_address, &udp_addr.sin_addr) <= 0) {
+        JANUS_LOG(LOG_ERR, "Invalid UDP host address: %s\n", udp_address);
 		close(udp_socket);
 		udp_socket = -1;
 		return -1;
-	}
-
-    if(connect(udp_socket, (struct sockaddr *)&udp_addr, sizeof(udp_addr)) < 0)
-    {
-        JANUS_LOG(LOG_ERR, "Unable to connect to UDP socket: %s:%d\n", udp_address, udp_port);
-        close(udp_socket);
-		udp_socket = -1;
-        return -1;
     }
 
     /* Start worker threads */
@@ -301,10 +294,13 @@ static void *worker_thread_func(void *arg) {
             gchar *msg = entry->message + prefix_len;
             gchar *telemetered_msg = PACK_TELEMETRY_MSG(entry->seqnum, entry->timestamp, msg);
             if (telemetered_msg) {
-                ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen((char*)telemetered_msg), 0, NULL, sizeof(udp_addr));
-                if(sent < 0) {
+                ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen(telemetered_msg), 0, (struct sockaddr *)&udp_addr, udp_addr_size);
+                if ( sent < 0 ) {
                     JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
+                } else {
+                    JANUS_LOG(LOG_HUGE, "Sent UDP log message message (%d bytes) %s\n", sent, telemetered_msg);
                 }
+
                 g_free(telemetered_msg);
             } else {
                 JANUS_LOG(LOG_WARN, "Failed to allocate telemetry message\n");
