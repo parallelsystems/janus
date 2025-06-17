@@ -298,7 +298,7 @@ static void *worker_thread_func(void *arg) {
                 if ( sent < 0 ) {
                     JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
                 } else {
-                    JANUS_LOG(LOG_HUGE, "Sent UDP log message message (%d bytes) %s\n", sent, telemetered_msg);
+                    JANUS_LOG(LOG_INFO, "Sent UDP log message message (%d bytes) %s\n", sent, telemetered_msg);
                 }
 
                 g_free(telemetered_msg);
