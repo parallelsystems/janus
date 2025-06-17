@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <netdb.h>
 
 #include "logger.h"
 #include "../telem.h"
@@ -21,7 +22,7 @@
 #define JANUS_THREADED_LOGGER_PACKAGE		    TELEM_PLUGIN_PACKAGE_NAME
 
 /* Socket configuration */
-#define LOCALHOST "127.0.0.1"
+#define LOG_UDP_HOST "127.0.0.1"
 /* Port on which the Telemetry messages are streamed out of */
 #define LOG_UDP_PORT 9090
 
@@ -96,8 +97,15 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
     }
     JANUS_LOG(LOG_INFO, "Initializing telemetry logger plugin\n");
 
+    /* Setup hostname resolution */
+    int resolved_addr = 0;
+    struct addrinfo hints;
+    struct addrinfo *result = NULL;
+    char udp_addr_str[64];
+
+    /* Use defaults */
     char udp_address[64];
-    snprintf(udp_address, 64, "%s", LOCALHOST);
+    snprintf(udp_address, 64, "%s", LOG_UDP_HOST);
     uint16_t udp_port = LOG_UDP_PORT;
 
     if(config_path == NULL) {
@@ -145,7 +153,39 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 	janus_config_destroy(config);
 	config = NULL;
 
-    JANUS_LOG(LOG_INFO, "\tTelemetry Logger will stream data to %s:%d\n", udp_address, udp_port);
+    /* Resolve the hostname */
+    memset (&hints, 0, sizeof (hints));
+    hints.ai_family = PF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+
+    int errcode = getaddrinfo(udp_address, NULL, &hints, &result);
+    if (!errcode) {
+        struct addrinfo *tmp = NULL;
+        /* Parse the resolved results */
+        for(tmp = result; tmp != NULL && !resolved_addr; tmp = tmp->ai_next) {
+            switch (tmp->ai_family) {
+                case AF_INET:
+                    struct sockaddr_in *sockaddr_ipv4 = (struct sockaddr_in *)tmp->ai_addr;
+                    if (sockaddr_ipv4) {
+                        resolved_addr = 1;
+                        snprintf(udp_address, 64, "%s", inet_ntoa(sockaddr_ipv4->sin_addr));
+                        JANUS_LOG(LOG_INFO, "\tGot IPv4 address: %s\n", udp_address);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        freeaddrinfo(result);
+    } else {
+        JANUS_LOG(LOG_WARN, "\tUnable to resolve address: %s\n", udp_address);
+    }
+
+    JANUS_LOG(LOG_INFO, "\tTelemetry Logger will stream data to %s%s:%d\n",
+        resolved_addr ? "(resolved address) " : "",
+        udp_address, udp_port);
 
     /* Initialize async queue for log entries */
     log_queue = g_async_queue_new_full((GDestroyNotify)free_log_entry);
