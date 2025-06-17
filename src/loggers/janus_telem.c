@@ -54,43 +54,43 @@ static ssize_t udp_addr_size = sizeof(udp_addr);
 static atomic_uint_fast64_t seqnum = 0;
 
 /* JANUS Plugin methods */
-static int janus_threadedlogger_init(const char *server_name, const char *config_path);
-static void janus_threadedlogger_destroy(void);
-static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char *line);
-int janus_threadedlogger_get_api_compatibility(void);
-int janus_threadedlogger_get_version(void);
-const char *janus_threadedlogger_get_version_string(void);
-const char *janus_threadedlogger_get_description(void);
-const char *janus_threadedlogger_get_name(void);
-const char *janus_threadedlogger_get_author(void);
-const char *janus_threadedlogger_get_package(void);
+static int janus_telemlogger_init(const char *server_name, const char *config_path);
+static void janus_telemlogger_destroy(void);
+static void janus_telemlogger_incoming_logline(int64_t timestamp, const char *line);
+int janus_telemlogger_get_api_compatibility(void);
+int janus_telemlogger_get_version(void);
+const char *janus_telemlogger_get_version_string(void);
+const char *janus_telemlogger_get_description(void);
+const char *janus_telemlogger_get_name(void);
+const char *janus_telemlogger_get_author(void);
+const char *janus_telemlogger_get_package(void);
 
 /* Forward declarations of specific plugin functions */
 static void *worker_thread_func(void *arg);
 static void free_log_entry(log_entry_t *entry);
 
 /* Plugin descriptor */
-static janus_logger janus_threadedlogger_logger = {
-    .init = janus_threadedlogger_init,
-    .destroy = janus_threadedlogger_destroy,
-    .get_api_compatibility = janus_threadedlogger_get_api_compatibility,
-    .get_version = janus_threadedlogger_get_version,
-    .get_version_string = janus_threadedlogger_get_version_string,
-    .get_description = janus_threadedlogger_get_description,
-    .get_name = janus_threadedlogger_get_name,
-    .get_author = janus_threadedlogger_get_author,
-    .get_package = janus_threadedlogger_get_package,
-    .incoming_logline = janus_threadedlogger_incoming_logline,
+static janus_logger janus_telemlogger_logger = {
+    .init = janus_telemlogger_init,
+    .destroy = janus_telemlogger_destroy,
+    .get_api_compatibility = janus_telemlogger_get_api_compatibility,
+    .get_version = janus_telemlogger_get_version,
+    .get_version_string = janus_telemlogger_get_version_string,
+    .get_description = janus_telemlogger_get_description,
+    .get_name = janus_telemlogger_get_name,
+    .get_author = janus_telemlogger_get_author,
+    .get_package = janus_telemlogger_get_package,
+    .incoming_logline = janus_telemlogger_incoming_logline,
 };
 
 /* Plugin creator */
 janus_logger *create(void) {
     JANUS_LOG(LOG_INFO, "%s created!\n", JANUS_THREADED_LOGGER_NAME);
-    return &janus_threadedlogger_logger;
+    return &janus_telemlogger_logger;
 }
 
 /* Initialize the plugin */
-static int janus_threadedlogger_init(const char *server_name, const char *config_path) {
+static int janus_telemlogger_init(const char *server_name, const char *config_path) {
     if(g_atomic_int_get(&initialized) || g_atomic_int_get(&stopping)) {
         JANUS_LOG(LOG_ERR, "Telemetry logger already initialized\n");
         return -1;
@@ -101,7 +101,6 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
     int resolved_addr = 0;
     struct addrinfo hints;
     struct addrinfo *result = NULL;
-    char udp_addr_str[64];
 
     /* Use defaults */
     char udp_address[64];
@@ -218,7 +217,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the telemetry logger thread...\n",
 			error->code, error->message ? error->message : "?");
 		g_error_free(error);
-        janus_threadedlogger_destroy();
+        janus_telemlogger_destroy();
 		return -1;
 	}
 
@@ -227,7 +226,7 @@ static int janus_threadedlogger_init(const char *server_name, const char *config
 }
 
 /* Destroy the plugin */
-static void janus_threadedlogger_destroy(void) {
+static void janus_telemlogger_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
@@ -256,37 +255,37 @@ static void janus_threadedlogger_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_THREADED_LOGGER_NAME);
 }
 
-int janus_threadedlogger_get_api_compatibility(void) {
+int janus_telemlogger_get_api_compatibility(void) {
 	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
 	return JANUS_LOGGER_API_VERSION;
 }
 
-int janus_threadedlogger_get_version(void) {
+int janus_telemlogger_get_version(void) {
 	return JANUS_THREADED_LOGGER_VERSION;
 }
 
-const char *janus_threadedlogger_get_version_string(void) {
+const char *janus_telemlogger_get_version_string(void) {
 	return JANUS_THREADED_LOGGER_VERSION_STRING;
 }
 
-const char *janus_threadedlogger_get_description(void) {
+const char *janus_telemlogger_get_description(void) {
 	return JANUS_THREADED_LOGGER_DESCRIPTION;
 }
 
-const char *janus_threadedlogger_get_name(void) {
+const char *janus_telemlogger_get_name(void) {
 	return JANUS_THREADED_LOGGER_NAME;
 }
 
-const char *janus_threadedlogger_get_author(void) {
+const char *janus_telemlogger_get_author(void) {
 	return JANUS_THREADED_LOGGER_AUTHOR;
 }
 
-const char *janus_threadedlogger_get_package(void) {
+const char *janus_telemlogger_get_package(void) {
 	return JANUS_THREADED_LOGGER_PACKAGE;
 }
 
 /* Main handle incoming log lines, called from the main JANUS thread */
-static void janus_threadedlogger_incoming_logline(int64_t timestamp, const char *line) {
+static void janus_telemlogger_incoming_logline(int64_t timestamp, const char *line) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || line == NULL) {
 		/* Janus is closing or the plugin is */
 		return;
@@ -336,9 +335,9 @@ static void *worker_thread_func(void *arg) {
             if (telemetered_msg) {
                 ssize_t sent = sendto(udp_socket, (char*)telemetered_msg, strlen(telemetered_msg), 0, (struct sockaddr *)&udp_addr, udp_addr_size);
                 if (sent < 0) {
-                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", telemetered_msg, strerror(errno));
+                    JANUS_LOG(LOG_WARN, "Failed to send UDP log message %s -> %s\n", (char*)telemetered_msg, strerror(errno));
                 } else {
-                    JANUS_LOG(LOG_INFO, "Sent UDP log message message (%d bytes) %s\n", sent, telemetered_msg);
+                    JANUS_LOG(LOG_VERB, "Sent UDP log message message (%lu bytes) %s\n", sent, (char*)telemetered_msg);
                 }
 
                 g_free(telemetered_msg);
