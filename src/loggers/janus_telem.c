@@ -345,12 +345,14 @@ static void *worker_thread_func(void *arg) {
                 JANUS_LOG(LOG_WARN, "Failed to allocate telemetry message\n");
             }
         }
+        // We can free this entry now that it's popped off the queue
+        free_log_entry(entry);
     }
 
     JANUS_LOG(LOG_INFO, "Worker thread stopped\n");
     return NULL;
 }
-/* Free log entry - async destructor function for each queue entry when it's popped off */
+/* Free log entry - async destructor function for each remaining queue entry when the queue itself is unref'd */
 static void free_log_entry(log_entry_t *entry) {
     if(entry) {
         if (entry->message)
