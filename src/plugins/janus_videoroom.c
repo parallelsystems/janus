@@ -1937,6 +1937,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
 static gboolean ipv6_disabled = FALSE;
+static volatile uint32_t recording_chunk_len_bytes = 5000000;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
@@ -3584,6 +3585,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			string_ids = janus_is_true(ids->value);
 		if(string_ids) {
 			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
+		}
+		janus_config_item *rec_chunk_len_bytes = janus_config_get(config, config_general, janus_config_type_item, "recording_chunk_max_bytes");
+		if(rec_chunk_len_bytes != NULL && rec_chunk_len_bytes->value != NULL)
+		{
+			uint32_t tmp_bytes = 0;
+			if (!janus_string_to_uint32(rec_chunk_len_bytes->value, &tmp_bytes)) {
+				recording_chunk_len_bytes = tmp_bytes;
+				JANUS_LOG(LOG_INFO, "VideoRoom will chunk recordings at %lu bytes\n", recording_chunk_len_bytes);
+			}
 		}
 	}
 	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -8272,9 +8282,6 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	janus_refcount_decrease(&session->ref);
 }
 
-// TODO: make a property we can configure in room
-#define REC_FILE_CHUNK_SIZE 5000000 // 1000000000
-
 static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *session, janus_videoroom_publisher *participant, janus_plugin_rtp *pkt);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, janus_plugin_rtp *pkt) {
 	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -8485,7 +8492,7 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		if(!video || !ps->simulcast) {
 			// If we're approaching our file size and this is a keyframe, close the previous file and open a new one
 			int64_t f_len = janus_recorder_peek_len(ps->rc);
-			if (f_len >= REC_FILE_CHUNK_SIZE) {
+			if (f_len >= recording_chunk_len_bytes) {
 				JANUS_LOG(LOG_INFO, "Recorded file was %ld bytes long - it's time to chunk on next keyframe!\n", f_len);
 				
 				int is_keyframe = 0;
