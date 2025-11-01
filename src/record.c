@@ -248,6 +248,7 @@ janus_recorder *janus_recorder_create_full(const char *dir, const char *codec, c
 		g_free(copy_for_base);
 		return NULL;
 	}
+	rc->file_len = strlen(header);
 	g_atomic_int_set(&rc->writable, 1);
 	/* We still need to also write the info header first */
 	g_atomic_int_set(&rc->header, 0);
@@ -329,6 +330,16 @@ int janus_recorder_encrypted(janus_recorder *recorder) {
 	return -1;
 }
 
+int64_t janus_recorder_peek_len(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	int64_t len = 0;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	len = (int64_t)recorder->file_len;
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return len;
+}
+
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length) {
 	if(!recorder)
 		return -1;
@@ -349,6 +360,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -5;
 	}
+	u_int64_t bytes_written = 0;
 	gint64 now = janus_get_monotonic_time();
 	if(!g_atomic_int_get(&recorder->header)) {
 		/* Write info header as a JSON formatted info */
@@ -407,35 +419,48 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write size of JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 				res, sizeof(uint16_t), g_strerror(errno));
+		} else {
+			bytes_written += sizeof(uint16_t);
 		}
+
 		res = fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		if(res != strlen(info_text)) {
 			JANUS_LOG(LOG_WARN, "Couldn't write JSON header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 				res, strlen(info_text), g_strerror(errno));
+		} else {
+			bytes_written += strlen(info_text);
 		}
 		free(info_text);
 		/* Done */
 		recorder->started = now;
 		g_atomic_int_set(&recorder->header, 1);
 	}
+
 	/* Write frame header (fixed part[4], timestamp[4], length[2]) */
 	size_t res = fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
 	if(res != strlen(frame_header)) {
 		JANUS_LOG(LOG_WARN, "Couldn't write frame header in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 			res, strlen(frame_header), g_strerror(errno));
+	} else {
+		bytes_written += strlen(frame_header);
 	}
+
 	uint32_t timestamp = (uint32_t)(now > recorder->started ? ((now - recorder->started)/1000) : 0);
 	timestamp = htonl(timestamp);
 	res = fwrite(&timestamp, sizeof(uint32_t), 1, recorder->file);
 	if(res != 1) {
 		JANUS_LOG(LOG_WARN, "Couldn't write frame timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 			res, sizeof(uint32_t), g_strerror(errno));
+	} else {
+		bytes_written += sizeof(uint32_t);
 	}
 	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
 	res = fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	if(res != 1) {
 		JANUS_LOG(LOG_WARN, "Couldn't write size of frame in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 			res, sizeof(uint16_t), g_strerror(errno));
+	} else {
+		bytes_written += sizeof(uint16_t);
 	}
 	if(recorder->type == JANUS_RECORDER_DATA) {
 		/* If it's data, then we need to prepend timing related info, as it's not there by itself */
@@ -444,6 +469,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		if(res != 1) {
 			JANUS_LOG(LOG_WARN, "Couldn't write data timestamp in .mjr file (%zu != %zu, %s), expect issues post-processing\n",
 				res, sizeof(gint64), g_strerror(errno));
+		} else {
+			bytes_written += sizeof(gint64);
 		}
 	}
 	/* Edit packet header if needed */
@@ -470,6 +497,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 			}
 			janus_mutex_unlock_nodebug(&recorder->mutex);
 			return -6;
+		} else {
+			bytes_written += tot;
 		}
 		tot -= temp;
 	}
@@ -479,6 +508,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		header->seq_number = htons(seq);
 		header->timestamp = htonl(timestamp);
 	}
+	recorder->file_len += bytes_written;
+
 	/* Done */
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
@@ -492,7 +523,7 @@ int janus_recorder_close(janus_recorder *recorder) {
 		fseek(recorder->file, 0L, SEEK_END);
 		size_t fsize = ftell(recorder->file);
 		fseek(recorder->file, 0L, SEEK_SET);
-		JANUS_LOG(LOG_INFO, "File is %zu bytes: %s\n", fsize, recorder->filename);
+		JANUS_LOG(LOG_INFO, "File is %zu (Calc: %zu) bytes: %s\n", fsize, recorder->file_len, recorder->filename);
 	}
 	if(rec_tempname) {
 		/* We need to rename the file, to remove the temporary extension */
