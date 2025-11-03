@@ -231,8 +231,6 @@ int main(int argc, char *argv[]) {
 	/* Check if we only need to print the supported extensions for all codecs */
 	if(options.fileexts_only) {
 		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 		JANUS_LOG(LOG_INFO, "Supported file extensions:\n");
 		char supported[100];
 		JANUS_LOG(LOG_INFO, "  -- Opus:   %s\n", janus_pp_extensions_string(janus_pp_opus_get_extensions(), supported, sizeof(supported)));
@@ -307,8 +305,6 @@ int main(int argc, char *argv[]) {
 
 	if(!jsonheader_only) {
 		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 		if(metadata)
 			JANUS_LOG(LOG_INFO, "Metadata: %s\n", metadata);

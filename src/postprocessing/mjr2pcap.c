@@ -154,8 +154,6 @@ int main(int argc, char *argv[]) {
 	atexit(janus_log_destroy);
 
 	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 
 	/* Evaluate arguments */
 	if(argc != 3) {
