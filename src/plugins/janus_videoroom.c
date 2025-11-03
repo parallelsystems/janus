@@ -1937,6 +1937,8 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
 static gboolean ipv6_disabled = FALSE;
+// Default file recording chunk is 50MB
+static volatile uint32_t recording_chunk_len_bytes = 50000000;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
@@ -3584,6 +3586,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			string_ids = janus_is_true(ids->value);
 		if(string_ids) {
 			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
+		}
+		janus_config_item *rec_chunk_len_bytes = janus_config_get(config, config_general, janus_config_type_item, "recording_chunk_max_bytes");
+		if(rec_chunk_len_bytes != NULL && rec_chunk_len_bytes->value != NULL)
+		{
+			uint32_t tmp_bytes = 0;
+			if (!janus_string_to_uint32(rec_chunk_len_bytes->value, &tmp_bytes)) {
+				recording_chunk_len_bytes = tmp_bytes;
+				JANUS_LOG(LOG_INFO, "VideoRoom will chunk recordings at %lu bytes\n", recording_chunk_len_bytes);
+			}
 		}
 	}
 	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -8480,6 +8491,44 @@ static void janus_videoroom_incoming_rtp_internal(janus_videoroom_session *sessi
 		rtp->type = ps->pt;
 		/* Save the frame if we're recording */
 		if(!video || !ps->simulcast) {
+			// If we're approaching our file size and this is a keyframe, close the previous file and open a new one
+			int64_t f_len = janus_recorder_peek_len(ps->rc);
+			if (f_len >= recording_chunk_len_bytes) {
+				JANUS_LOG(LOG_INFO, "Recorded file was %ld bytes long - it's time to chunk on next keyframe!\n", f_len);
+				
+				int is_keyframe = 0;
+				if ( video ) {
+					int plen = 0;
+					char *payload = janus_rtp_payload(buf, len, &plen);
+					if(ps->vcodec == JANUS_VIDEOCODEC_VP8) {
+						if(janus_vp8_is_keyframe(payload, plen))
+							is_keyframe = 1;
+					} else if(ps->vcodec == JANUS_VIDEOCODEC_VP9) {
+						if(janus_vp9_is_keyframe(payload, plen))
+							is_keyframe = 1;
+					} else if(ps->vcodec == JANUS_VIDEOCODEC_H264) {
+						if(janus_h264_is_keyframe(payload, plen))
+							is_keyframe = 1;
+					} else if(ps->vcodec == JANUS_VIDEOCODEC_AV1) {
+						if(janus_av1_is_keyframe(payload, plen))
+							is_keyframe = 1;
+					} else if(ps->vcodec == JANUS_VIDEOCODEC_H265) {
+						if(janus_h265_is_keyframe(payload, plen))
+							is_keyframe = 1;
+					}
+				}
+
+				int split_point = video && is_keyframe;
+				if ( split_point ) {
+					JANUS_LOG(LOG_INFO, "Recorded file was %ld bytes long - got the keyframe!\n", f_len);
+					janus_mutex_lock(&participant->rec_mutex);
+					janus_videoroom_recorder_close(participant);
+					janus_videoroom_recorder_create(ps);
+					janus_mutex_unlock(&participant->rec_mutex);
+					JANUS_LOG(LOG_INFO, "Created new recording file to which we'll append to %s!\n", ps->rc ? (ps->rc->filename ? ps->rc->filename : "????") : "?");
+				}
+			}
+
 			janus_recorder_save_frame(ps->rc, buf, len);
 		} else {
 			/* We're simulcasting, save the best video quality */

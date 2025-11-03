@@ -48,8 +48,6 @@ gboolean janus_pprec_options_parse(janus_pprec_options *options, int argc, char 
 	g_option_context_add_main_entries(opts, opt_entries, NULL);
 	if(!g_option_context_parse(opts, &argc, &argv, &error)) {
 		JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-		JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-		JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 		g_print("%s\n", error->message);
 		g_error_free(error);
 		janus_pprec_options_destroy();
@@ -62,8 +60,6 @@ gboolean janus_pprec_options_parse(janus_pprec_options *options, int argc, char 
 
 void janus_pprec_options_help(void) {
 	JANUS_LOG(LOG_INFO, "Janus version: %d (%s)\n", janus_version, janus_version_string);
-	JANUS_LOG(LOG_INFO, "Janus commit: %s\n", janus_build_git_sha);
-	JANUS_LOG(LOG_INFO, "Compiled on:  %s\n\n", janus_build_git_time);
 	char *help = g_option_context_get_help(opts, TRUE, NULL);
 	g_print("%s", help);
 	g_free(help);

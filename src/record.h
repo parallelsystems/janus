@@ -73,6 +73,8 @@ typedef struct janus_recorder {
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
 	volatile gint destroyed;
+	/*! \brief Number of bytes written to the file */
+	volatile uint64_t file_len;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 } janus_recorder;
@@ -139,6 +141,10 @@ int janus_recorder_opusred(janus_recorder *recorder, int red_pt);
  * @param[in] recorder The janus_recorder instance to mark as encrypted
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_encrypted(janus_recorder *recorder);
+/*! \brief Peek at the current length of the recorded file, in bytes
+ * @param[in] recorder The janus_recorder instance to query
+ * @returns size of bytes in case of success, a negative integer otherwise */
+int64_t janus_recorder_peek_len(janus_recorder *recorder);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save
