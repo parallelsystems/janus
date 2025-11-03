@@ -1937,7 +1937,8 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
 static gboolean ipv6_disabled = FALSE;
-static volatile uint32_t recording_chunk_len_bytes = 5000000;
+// Default file recording chunk is 50MB
+static volatile uint32_t recording_chunk_len_bytes = 50000000;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
