@@ -472,34 +472,21 @@ void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *proto
 			return;
 		}
 	}
+
 	/* Send the data, whether it's text or binary */
-	if(sctp->pending_messages != NULL && !g_queue_is_empty(sctp->pending_messages)) {
-		/* We couldn't send all pending messages, queue the new one as well */
-		if(buf != NULL && len > 0) {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Couldn't send all pending messages, queueing new message\n",
-				sctp->handle_id);
-			janus_sctp_pending_message *m = janus_sctp_pending_message_create(i, textdata, buf, len);
-			if(sctp->pending_messages == NULL)
-				sctp->pending_messages = g_queue_new();
-
-			g_queue_push_tail(sctp->pending_messages, m);
-
-			// Drop old messages
-			while (g_queue_get_length(sctp->pending_messages) > SCTP_PENDING_MSG_QUEUE_LEN) {
-				janus_sctp_pending_message_free(g_queue_pop_head(sctp->pending_messages));
-			}
-		}
-		return;
-	}
 	int res = janus_sctp_send_text_or_binary(sctp, i, textdata, buf, len);
 	if(res == -2) {
-		/* Delivery failed with an EAGAIN, queue and retry later */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got EAGAIN when trying to send message on channel %d, retrying later\n",
-			sctp->handle_id, i);
+		/* Delivery failed with an EAGAIN, queue and retry later. Only log on first instance. */
+		if ( sctp->pending_messages ? g_queue_is_empty(sctp->pending_messages) : true ) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got EAGAIN when trying to send message on channel %d, retrying later (%d)\n",
+				sctp->handle_id, i, sctp->pending_messages ? g_queue_get_length(sctp->pending_messages) : -1);
+		}
+
 		janus_sctp_pending_message *m = janus_sctp_pending_message_create(i, textdata, buf, len);
+
+		// Create the queue if it doesn't exist
 		if(sctp->pending_messages == NULL)
 			sctp->pending_messages = g_queue_new();
-
 		g_queue_push_tail(sctp->pending_messages, m);
 
 		// Drop old messages
@@ -906,7 +893,7 @@ void janus_sctp_data_ready(janus_sctp_association *sctp) {
 		return;
 
 	if(sctp->pending_messages != NULL && !g_queue_is_empty(sctp->pending_messages)) {
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Sctp data ready - trying to resend %"SCNu32" queued messages\n",
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] SCTP data ready - trying to resend %"SCNu32" queued messages\n",
 					sctp->handle_id, g_queue_get_length(sctp->pending_messages));
 
 		/* Messages waiting in the queue, send those first */
