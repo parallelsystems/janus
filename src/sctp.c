@@ -477,9 +477,9 @@ void janus_sctp_send_data(janus_sctp_association *sctp, char *label, char *proto
 	int res = janus_sctp_send_text_or_binary(sctp, i, textdata, buf, len);
 	if(res == -2) {
 		/* Delivery failed with an EAGAIN, queue and retry later. Only log on first instance. */
-		if ( sctp->pending_messages ? g_queue_is_empty(sctp->pending_messages) : true ) {
+		if ( sctp->pending_messages != NULL ? g_queue_is_empty(sctp->pending_messages) : TRUE ) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got EAGAIN when trying to send message on channel %d, retrying later (%d)\n",
-				sctp->handle_id, i, sctp->pending_messages ? g_queue_get_length(sctp->pending_messages) : -1);
+				sctp->handle_id, i, sctp->pending_messages ? g_queue_get_length(sctp->pending_messages) : 0);
 		}
 
 		janus_sctp_pending_message *m = janus_sctp_pending_message_create(i, textdata, buf, len);
