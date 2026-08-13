@@ -511,6 +511,7 @@ post = <optional backend to contact via HTTP post for all incoming messages>
 #include "../config.h"
 #include "../mutex.h"
 #include "../utils.h"
+#include "telem.h"
 
 
 /* Plugin information */
@@ -1251,6 +1252,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		if(json_object_get(root, "textroom") == NULL)
 			json_object_set_new(root, "textroom", json_string(request_text));
 		json_object_set_new(root, "transaction", json_string(transaction));
+
 		janus_plugin_result *result = janus_textroom_handle_incoming_request(session->handle, NULL, root, FALSE);
 		if(result == NULL) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
@@ -1414,7 +1416,7 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, janus_plugin_dat
 	char *text = g_malloc(len+1);
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
-	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
+	JANUS_LOG(LOG_VERB, "TextRoom got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
 	janus_textroom_handle_incoming_request(handle, text, NULL, FALSE);
 	janus_refcount_decrease(&session->ref);
 }
@@ -1437,6 +1439,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 	janus_textroom_session *session = NULL;
 	if(handle)
 		session = (janus_textroom_session *)handle->plugin_handle;
+
 	/* Parse JSON, if needed */
 	json_error_t error;
 	json_t *root = text ? json_loads(text, 0, &error) : json;
@@ -1445,6 +1448,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		JANUS_LOG(LOG_ERR, "Error parsing data channel message (JSON error: on line %d: %s)\n", error.line, error.text);
 		return NULL;
 	}
+
 	/* Handle request */
 	int error_code = 0;
 	char error_cause[512];
@@ -1455,6 +1459,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 	json_t *reply = NULL;
 	if(error_code != 0)
 		goto msg_response;
+
 	json_t *request = json_object_get(root, "textroom");
 	json_t *transaction = json_object_get(root, "transaction");
 	const char *request_text = json_string_value(request);
@@ -1563,6 +1568,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			JANUS_LOG(LOG_VERB, "To %s in %s: %s\n", to, room_id_str, message);
 			janus_textroom_participant *top = g_hash_table_lookup(textroom->participants, to);
 			if(top) {
+				JANUS_TELEMETER_LOG("{\"event\":\"tr_message_to\",\"room\":\"%s\",\"sender\":\"%s\",\"recipient\":\"%s\",\"msg\":%s}", textroom->room_name, participant->username, to, message);
 				janus_refcount_increase(&top->ref);
 				janus_plugin_data data = { .label = NULL, .protocol = NULL, .binary = FALSE, .buffer = msg_text, .length = strlen(msg_text) };
 				gateway->relay_data(top->session->handle, &data);
@@ -1998,6 +2004,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			janus_refcount_decrease(&room->ref);
 		}
 		janus_mutex_unlock(&rooms_mutex);
+
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
@@ -2958,8 +2965,10 @@ msg_response:
 					json_object_set_new(event, "error", json_string(error_cause));
 					reply = event;
 				}
+
 				if(transaction_text && json == NULL)
 					json_object_set_new(reply, "transaction", json_string(transaction_text));
+
 				if(json == NULL) {
 					/* Reply via data channels */
 					char *reply_text = json_dumps(reply, json_format);
