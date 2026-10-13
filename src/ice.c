@@ -3017,11 +3017,11 @@ telemeter_packet:
 								handle->handle_id, cur_seq->seq, nack_count, nack_time_msec);
 							cur_seq->state = SEQ_RECVED;
 						}
-						// Send 3 NACKs 10msec apart (0, 10, 20), and the following NACKS at 90, 120, 150 msec
+						// Send 3 NACKs, at t = 0, 10, 30 msec since detection
 						else if (
 							(cur_seq->state >= SEQ_MISSING && cur_seq->state < SEQ_GIVEUP) && 
 							(cur_seq->ts == now /* new detection */ ||
-								(now - cur_seq->ts >= (nack_count <= 2 ? nack_count*10000 : (nack_count)*30000)
+								(now - cur_seq->ts >= (nack_count < 2 ? nack_count*10000 : (nack_count)*15000)
 							))
 						) {
 							cur_seq->state += SEQ_NACKED; // Uses enum as a counter
