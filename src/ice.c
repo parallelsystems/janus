@@ -2769,7 +2769,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						SEQ_MISSING;
 					packet_telem.nack_count = nack_state;
 
-					// Nacks up to 6 times
+					// Nacks up to 3 times
 					if ( nack_state >= SEQ_NACKED && nack_state <= SEQ_GIVEUP ) {
 						JANUS_LOG(LOG_NACK, "[%"SCNu64"] +++ Received NACKed packet %"SCNu16" (NACK'd %"SCNu32" time(s)) (SSRC %"SCNu32")\n",
 							handle->handle_id, seqno, nack_state, packet_ssrc);

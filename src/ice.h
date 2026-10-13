@@ -327,7 +327,7 @@ void janus_seq_list_free(janus_seq_info **head);
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
-	SEQ_GIVEUP = 6, // Do up to 6 NACKs
+	SEQ_GIVEUP = 3, // Do up to 3 NACKs
 	SEQ_RECVED,
 };
 
