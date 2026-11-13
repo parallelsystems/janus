@@ -217,7 +217,11 @@ certificates: {
 # 0 disables these events entirely), how many lost packets should trigger a
 # 'slowlink' event to users (default=0, disabled), and how often, in milliseconds,
 # to send the Transport Wide Congestion Control feedback information back
-# to senders, if negotiated (default=200ms). Finally, if you're using BoringSSL
+# to senders, if negotiated (default=200ms). Packets missing from that feedback
+# are held back for 'twcc_reorder_grace' milliseconds, in case they arrive
+# late or out of order, before being reported as lost (default=0, which means
+# the same as twcc_period: a missing packet is reported one tick later than
+# the packets around it, while gap-free feedback is never delayed). Finally, if you're using BoringSSL
 # you can customize the frequency of retransmissions: OpenSSL has a fixed
 # value of 1 second (the default), while BoringSSL can override that. Notice
 # that lower values (e.g., 100ms) will typically get you faster connection
@@ -232,6 +236,7 @@ media: {
 	#no_media_timer = 1
 	#slowlink_threshold = 4
 	#twcc_period = 100
+	#twcc_reorder_grace = 0
 	#dtls_timeout = 500
 
 	# Janus can do some optimizations on the NACK queue, specifically when

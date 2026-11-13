@@ -371,6 +371,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "min-nack-queue", json_integer(janus_get_min_nack_queue()));
 	json_object_set_new(info, "nack-optimizations", janus_is_nack_optimizations_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "twcc-period", json_integer(janus_get_twcc_period()));
+	json_object_set_new(info, "twcc-reorder-grace", json_integer(janus_get_twcc_reorder_grace() ?
+		janus_get_twcc_reorder_grace() : janus_get_twcc_period()));
 	if(janus_get_dscp() > 0)
 		json_object_set_new(info, "dscp", json_integer(janus_get_dscp()));
 	json_object_set_new(info, "dtls-mtu", json_integer(janus_dtls_bio_agent_get_mtu()));
@@ -5261,6 +5263,16 @@ gint main(int argc, char *argv[]) {
 			JANUS_LOG(LOG_WARN, "Ignoring twcc_period value as it's not a positive integer\n");
 		} else {
 			janus_set_twcc_period(tp);
+		}
+	}
+	/* TWCC reorder grace period */
+	item = janus_config_get(config, config_media, janus_config_type_item, "twcc_reorder_grace");
+	if(item && item->value) {
+		int tg = atoi(item->value);
+		if(tg < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring twcc_reorder_grace value as it's negative\n");
+		} else {
+			janus_set_twcc_reorder_grace(tg);
 		}
 	}
 

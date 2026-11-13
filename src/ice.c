@@ -608,6 +608,20 @@ void janus_set_twcc_period(uint period) {
 uint janus_get_twcc_period(void) {
 	return twcc_period;
 }
+/* How long, in milliseconds, a missing packet is held back from TWCC feedback
+ * waiting for it to show up late/out of order (0 = same as the TWCC period) */
+static uint twcc_reorder_grace = 0;
+void janus_set_twcc_reorder_grace(uint grace) {
+	twcc_reorder_grace = grace;
+	if(twcc_reorder_grace == 0) {
+		JANUS_LOG(LOG_VERB, "Setting TWCC reorder grace to the TWCC period\n");
+	} else {
+		JANUS_LOG(LOG_VERB, "Setting TWCC reorder grace to %ums\n", twcc_reorder_grace);
+	}
+}
+uint janus_get_twcc_reorder_grace(void) {
+	return twcc_reorder_grace;
+}
 
 /* DSCP value, which we can set via libnice: it's disabled by default */
 static int dscp_ef = 0;
@@ -1769,6 +1783,7 @@ static void janus_ice_peerconnection_free(const janus_refcount *pc_ref) {
 	pc->rpass = NULL;
 	g_slist_free_full(pc->transport_wide_received_seq_nums, (GDestroyNotify)g_free);
 	pc->transport_wide_received_seq_nums = NULL;
+	janus_twcc_staging_clear(&pc->transport_wide_cc_staging);
 	if(pc->candidates != NULL) {
 		GSList *i = NULL, *candidates = pc->candidates;
 		for(i = candidates; i; i = i->next) {
@@ -2503,6 +2518,8 @@ candidatedone:
 // Critically, called from both the publisher and receiver sides! Logging with the handle_id is very important to discern...
 // On the receiver side, we mainly only get RTCP packets, since it's not sending RTP video...
 static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
+	/* Take the arrival time (e.g., for TWCC) before doing anything else */
+	gint64 arrival_time = janus_get_monotonic_time();
 	janus_ice_peerconnection *pc = (janus_ice_peerconnection *)ice;
 	if(!pc) {
 		JANUS_LOG(LOG_ERR, "No component %d in stream %d??\n", component_id, stream_id);
@@ -2736,25 +2753,14 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					guint16 transport_seq_num;
 					/* Get transport wide seq num */
 					if(janus_rtp_header_extension_parse_transport_wide_cc(buf, buflen, pc->transport_wide_cc_ext_id, &transport_seq_num) == 0) {
-						/* Get current timestamp */
-						struct timeval now;
-						gettimeofday(&now,0);
-						/* Create <seq num, time> pair */
+						/* Create <seq num, time> pair: the 16-bit seq num is extended
+						 * relative to the highest one seen, so that out of order
+						 * packets around a wrap end up in the right place */
 						janus_rtcp_transport_wide_cc_stats *stats = g_malloc0(sizeof(janus_rtcp_transport_wide_cc_stats));
-						/* Check if we have a sequence wrap */
-						if(transport_seq_num<0x0FFF && (pc->transport_wide_cc_last_seq_num&0xFFFF)>0xF000) {
-							/* Increase cycles */
-							pc->transport_wide_cc_cycles++;
-						}
-						/* Get extended value */
-						guint32 transport_ext_seq_num = pc->transport_wide_cc_cycles<<16 | transport_seq_num;
-						/* Store last received transport seq num */
-						pc->transport_wide_cc_last_seq_num = transport_seq_num;
-						/* Set stats values */
-						stats->transport_seq_num = transport_ext_seq_num;
-						stats->timestamp = (((guint64)now.tv_sec)*1E6+now.tv_usec);
-						/* Lock and append to received list */
 						janus_mutex_lock(&pc->mutex);
+						stats->transport_seq_num = janus_twcc_unwrap(&pc->transport_wide_cc_unwrapper, transport_seq_num);
+						stats->timestamp = arrival_time;
+						/* Append to received list */
 						pc->transport_wide_received_seq_nums = g_slist_prepend(pc->transport_wide_received_seq_nums, stats);
 						janus_mutex_unlock(&pc->mutex);
 					}
@@ -2769,7 +2775,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						SEQ_MISSING;
 					packet_telem.nack_count = nack_state;
 
-					// Nacks up to 6 times
+					// Nacks up to `SEQ_GIVEUP` times
 					if ( nack_state >= SEQ_NACKED && nack_state <= SEQ_GIVEUP ) {
 						JANUS_LOG(LOG_NACK, "[%"SCNu64"] +++ Received NACKed packet %"SCNu16" (NACK'd %"SCNu32" time(s)) (SSRC %"SCNu32")\n",
 							handle->handle_id, seqno, nack_state, packet_ssrc);
@@ -4174,7 +4180,61 @@ static void janus_ice_rtp_extension_update(janus_ice_handle *handle, janus_ice_p
 }
 
 static gint rtcp_transport_wide_cc_stats_comparator(gconstpointer item1, gconstpointer item2) {
-	return ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num - ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
+	gint64 s1 = ((rtcp_transport_wide_cc_stats*)item1)->transport_seq_num;
+	gint64 s2 = ((rtcp_transport_wide_cc_stats*)item2)->transport_seq_num;
+	return (s1 > s2) - (s1 < s2);
+}
+/* Move up to count slots from the TWCC staging window to a queue of stats to report */
+static void janus_ice_twcc_release(janus_twcc_staging *staging, guint count, GQueue *packets) {
+	guint i = 0;
+	for(i = 0; i < count; i++) {
+		janus_rtcp_transport_wide_cc_stats *stats = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
+		stats->timestamp = janus_twcc_staging_get(staging, i, &stats->transport_seq_num);
+		g_queue_push_tail(packets, stats);
+	}
+	janus_twcc_staging_consume(staging, count);
+}
+/* Generate and enqueue TWCC feedback for a contiguous range of stats (the queue is emptied) */
+static void janus_ice_twcc_send(janus_ice_handle *handle, janus_ice_peerconnection_medium *medium,
+		guint32 ssrc_peer, GQueue *packets) {
+	janus_ice_peerconnection *pc = handle->pc;
+	size_t size = 1300;
+	char rtcpbuf[1300];
+	/* Create and enqueue RTCP packets */
+	guint packets_len = 0;
+	while((packets_len = g_queue_get_length(packets)) > 0) {
+		GQueue *packets_to_process;
+		/* If we have more than 400 packets to acknowledge, let's send more than one message */
+		if(packets_len > 400) {
+			/* Split the queue into two */
+			GList *new_head = g_queue_peek_nth_link(packets, 400);
+			GList *new_tail = new_head->prev;
+			new_head->prev = NULL;
+			new_tail->next = NULL;
+			packets_to_process = g_queue_new();
+			packets_to_process->head = packets->head;
+			packets_to_process->tail = new_tail;
+			packets_to_process->length = 400;
+			packets->head = new_head;
+			/* packets->tail is unchanged */
+			packets->length = packets_len - 400;
+		} else {
+			packets_to_process = packets;
+		}
+		/* Get feedback packet count and increase it for next one */
+		guint8 feedback_packet_count = pc->transport_wide_cc_feedback_count++;
+		/* Create RTCP packet */
+		int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
+			medium->ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
+		/* Enqueue it, we'll send it later */
+		if(len > 0) {
+			janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = rtcpbuf, .length = len };
+			janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
+		}
+		if(packets_to_process != packets) {
+			g_queue_free(packets_to_process);
+		}
+	}
 }
 static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
@@ -4216,84 +4276,48 @@ static gboolean janus_ice_outgoing_transport_wide_cc_feedback(gpointer user_data
 	}
 
 	if(pc && pc->do_transport_wide_cc) {
-		/* Create a transport wide feedback message */
-		size_t size = 1300;
-		char rtcpbuf[1300];
-		/* Order packet list */
-		pc->transport_wide_received_seq_nums = g_slist_sort(pc->transport_wide_received_seq_nums,
-			rtcp_transport_wide_cc_stats_comparator);
-		/* Create full stats queue */
-		GQueue *packets = g_queue_new();
-		/* For all packets */
-		GSList *it = NULL;
-		for(it = pc->transport_wide_received_seq_nums; it; it = it->next) {
-			/* Get stat */
-			janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
-			/* Get transport seq */
-			guint32 transport_seq_num = stats->transport_seq_num;
-			/* Check if it is an out of order  */
-			if(transport_seq_num < pc->transport_wide_cc_last_feedback_seq_num) {
-				/* Skip, it was already reported as lost */
-				g_free(stats);
-				continue;
-			}
-			/* If not first */
-			if(pc->transport_wide_cc_last_feedback_seq_num) {
-				/* For each lost */
-				guint32 i = 0;
-				for(i = pc->transport_wide_cc_last_feedback_seq_num+1; i<transport_seq_num; ++i) {
-					/* Create new stat */
-					janus_rtcp_transport_wide_cc_stats *missing = g_malloc(sizeof(janus_rtcp_transport_wide_cc_stats));
-					/* Add missing packet */
-					missing->transport_seq_num = i;
-					missing->timestamp = 0;
-					/* Add it */
-					g_queue_push_tail(packets, missing);
-				}
-			}
-			/* Store last */
-			pc->transport_wide_cc_last_feedback_seq_num = transport_seq_num;
-			/* Add this one */
-			g_queue_push_tail(packets, stats);
-		}
-		/* Free and reset stats list */
-		g_slist_free(pc->transport_wide_received_seq_nums);
+		/* Take the packets received since the last tick */
+		janus_mutex_lock(&pc->mutex);
+		GSList *received = pc->transport_wide_received_seq_nums;
 		pc->transport_wide_received_seq_nums = NULL;
-		/* Create and enqueue RTCP packets */
-		guint packets_len = 0;
-		while((packets_len = g_queue_get_length(packets)) > 0) {
-			GQueue *packets_to_process;
-			/* If we have more than 400 packets to acknowledge, let's send more than one message */
-			if(packets_len > 400) {
-				/* Split the queue into two */
-				GList *new_head = g_queue_peek_nth_link(packets, 400);
-				GList *new_tail = new_head->prev;
-				new_head->prev = NULL;
-				new_tail->next = NULL;
-				packets_to_process = g_queue_new();
-				packets_to_process->head = packets->head;
-				packets_to_process->tail = new_tail;
-				packets_to_process->length = 400;
-				packets->head = new_head;
-				/* packets->tail is unchanged */
-				packets->length = packets_len - 400;
-			} else {
-				packets_to_process = packets;
+		janus_mutex_unlock(&pc->mutex);
+		received = g_slist_sort(received, rtcp_transport_wide_cc_stats_comparator);
+		/* Stage them along with the ones still waiting from previous ticks:
+		 * reordered/late packets fill the gaps they left, if still pending */
+		janus_twcc_staging *staging = &pc->transport_wide_cc_staging;
+		GQueue *packets = g_queue_new();
+		guint late = 0, duplicates = 0;
+		GSList *it = NULL;
+		for(it = received; it; it = it->next) {
+			janus_rtcp_transport_wide_cc_stats *stats = (janus_rtcp_transport_wide_cc_stats *)it->data;
+			janus_twcc_add_result res = janus_twcc_staging_add(staging, stats->transport_seq_num, stats->timestamp);
+			if(res == JANUS_TWCC_TOO_FAR) {
+				/* Discontinuity: flush everything we have (gaps as lost) and restart */
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] TWCC seq num jump (%"SCNi64" -> %"SCNi64"), flushing pending feedback\n",
+					handle->handle_id, staging->start, stats->transport_seq_num);
+				janus_ice_twcc_release(staging, janus_twcc_staging_length(staging), packets);
+				janus_ice_twcc_send(handle, medium, ssrc_peer, packets);
+				janus_twcc_staging_clear(staging);
+				res = janus_twcc_staging_add(staging, stats->transport_seq_num, stats->timestamp);
 			}
-			/* Get feedback packet count and increase it for next one */
-			guint8 feedback_packet_count = pc->transport_wide_cc_feedback_count++;
-			/* Create RTCP packet */
-			int len = janus_rtcp_transport_wide_cc_feedback(rtcpbuf, size,
-				medium->ssrc, ssrc_peer, feedback_packet_count, packets_to_process);
-			/* Enqueue it, we'll send it later */
-			if(len > 0) {
-				janus_plugin_rtcp rtcp = { .mindex = medium->mindex, .video = TRUE, .buffer = rtcpbuf, .length = len };
-				janus_ice_relay_rtcp_internal(handle, medium, &rtcp, FALSE);
-			}
-			if(packets_to_process != packets) {
-				g_queue_free(packets_to_process);
-			}
+			if(res == JANUS_TWCC_LATE)
+				late++;
+			else if(res == JANUS_TWCC_DUPLICATE)
+				duplicates++;
+			g_free(stats);
 		}
+		g_slist_free(received);
+		if(late > 0 || duplicates > 0) {
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] TWCC: ignored %u packets arriving after being reported as lost, and %u duplicates\n",
+				handle->handle_id, late, duplicates);
+		}
+		/* Release everything up to the first gap that's still within the grace period */
+		gint64 grace = (gint64)(twcc_reorder_grace ? twcc_reorder_grace : twcc_period) * 1000;
+		/* Allow some slack for timer jitter, so that "one period" doesn't become two */
+		gint64 slack = MIN(grace / 10, 5000);
+		guint count = janus_twcc_staging_releasable(staging, janus_get_monotonic_time(), grace - slack);
+		janus_ice_twcc_release(staging, count, packets);
+		janus_ice_twcc_send(handle, medium, ssrc_peer, packets);
 		/* Free mem */
 		g_queue_free(packets);
 	}
