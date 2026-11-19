@@ -610,7 +610,7 @@ uint janus_get_twcc_period(void) {
 }
 /* How long, in milliseconds, a missing packet is held back from TWCC feedback
  * waiting for it to show up late/out of order (0 = same as the TWCC period) */
-static uint twcc_reorder_grace = 50;
+static uint twcc_reorder_grace = 0;
 void janus_set_twcc_reorder_grace(uint grace) {
 	twcc_reorder_grace = grace;
 	if(twcc_reorder_grace == 0) {
