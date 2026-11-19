@@ -28,7 +28,6 @@
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
-#include "twcc.h"
 #include "text2pcap.h"
 #include "utils.h"
 #include "ip-utils.h"
@@ -194,13 +193,6 @@ void janus_set_twcc_period(uint period);
 /*! \brief Method to get the current TWCC period (see above)
  * @returns The current TWCC period */
 uint janus_get_twcc_period(void);
-/*! \brief Method to modify how long a missing packet is held back from TWCC feedback,
- * waiting for it to arrive late or out of order, before reporting it as not received
- * @param[in] grace The new grace period, in milliseconds (0 means "same as the TWCC period") */
-void janus_set_twcc_reorder_grace(uint grace);
-/*! \brief Method to get the current TWCC reorder grace period, as configured (see above)
- * @returns The configured grace period, in milliseconds (0 means "same as the TWCC period") */
-uint janus_get_twcc_reorder_grace(void);
 /*! \brief Method to modify the DSCP value to set, which is disabled by default
  * @param[in] dscp The new DSCP value (0 to disable) */
 void janus_set_dscp(int dscp);
@@ -471,15 +463,15 @@ struct janus_ice_peerconnection {
 	gint transport_wide_cc_ext_id;
 	/*! \brief Last sent transport wide seq num */
 	guint16 transport_wide_cc_out_seq_num;
-	/*! \brief Unwrapper for received transport wide seq nums */
-	janus_twcc_unwrapper transport_wide_cc_unwrapper;
-	/*! \brief Staging window of received/missing transport wide seq nums not reported yet
-	 * \note Only accessed by the TWCC feedback timer (and on cleanup) */
-	janus_twcc_staging transport_wide_cc_staging;
-	/*! \brief Transport wide cc feedback packet count */
+	/*! \brief Last received transport wide seq num */
+	guint32 transport_wide_cc_last_seq_num;
+	/*! \brief Last transport wide seq num sent on feedback */
+	guint32 transport_wide_cc_last_feedback_seq_num;
+	/*! \brief Transport wide cc transport seq num wrap cycles */
+	guint16 transport_wide_cc_cycles;
+	/*! \brief Transport wide cc rtp ext ID */
 	guint transport_wide_cc_feedback_count;
-	/*! \brief GLib list of transport wide cc stats received since the last
-	 * feedback tick, in reverse received order (protected by the mutex) */
+	/*! \brief GLib list of transport wide cc stats in reverse received order */
 	GSList *transport_wide_received_seq_nums;
 	/*! \brief Latest REMB feedback we received */
 	uint32_t remb_bitrate;

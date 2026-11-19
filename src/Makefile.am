@@ -95,8 +95,6 @@ janus_SOURCES = \
 	refcount.h \
 	rtcp.c \
 	rtcp.h \
-	twcc.c \
-	twcc.h \
 	rtp.c \
 	rtp.h \
 	rtpsrtp.h \
